@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from './firebase';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { db, collection, onSnapshot, query, where, orderBy } from './firebase';
 import FormCard from './FormCard';
 
 const YogurtIcon = () => <svg className="w-16 h-16 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v3a3 3 0 01-3 3z" /></svg>;
@@ -24,8 +23,7 @@ function FormsList({ onFormSelect }) {
         setLoading(true);
         const q = query(
             collection(db, "forms"), 
-            where("category", "==", selectedCategory),
-            orderBy("createdAt", "desc")
+            where("category", "==", selectedCategory)
         );
         
         const unsubscribe = onSnapshot(q, (snapshot) => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { auth, signInWithEmailAndPassword } from './firebase';
 
 function Login() {
     const [email, setEmail] = useState('');
@@ -9,7 +9,6 @@ function Login() {
     const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
-        const auth = getAuth();
         try {
             await signInWithEmailAndPassword(auth, email, password);
         } catch (err) {

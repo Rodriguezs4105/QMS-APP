@@ -1,7 +1,22 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "firebase/auth";
+import { 
+    getFirestore,
+    collection,
+    query,
+    where,
+    onSnapshot,
+    doc,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    serverTimestamp,
+    addDoc,
+    orderBy,
+    getDoc
+} from "firebase/firestore";
 
+// Your Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCTClpvjoo4G5eNXUQcRbxucB-53siG45Q",
   authDomain: "nodeqms.firebaseapp.com",
@@ -13,5 +28,26 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Export everything from this single file
+export {
+    db,
+    auth,
+    collection,
+    query,
+    where,
+    onSnapshot,
+    doc,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    serverTimestamp,
+    addDoc,
+    orderBy,
+    getDoc,
+    onAuthStateChanged,
+    signOut,
+    signInWithEmailAndPassword
+};
