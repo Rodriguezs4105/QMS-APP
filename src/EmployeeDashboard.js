@@ -81,12 +81,7 @@ function EmployeeDashboard({ onNavigate, onFormSelect }) {
                         </div>
                     </div>
                 </div>
-                <div className="mt-8 p-4 bg-gray-200 rounded-lg">
-                    <h3 className="text-center font-bold text-gray-700 mb-3">Developer Tools</h3>
-                    <button onClick={handleAddBatchSheetTemplate} className="w-full p-3 text-center rounded-lg shadow-md text-white bg-slate-500 hover:bg-slate-600 font-semibold">
-                        Add Batch Sheet Template
-                    </button>
-                </div>
+                {/* Developer Tools removed as requested */}
             </main>
         </div>
     );

@@ -15,6 +15,25 @@ const recipeData = {
 };
 const ingredientCodes = { 'Whole Milk': '6012', 'Low Fat Milk': '6012', 'Cream 40%': '6011', 'Precisa Cream': '6014', 'NFDM': '6004', 'MPC 85': '6002', 'Whey Protein': '6001', 'Lactonat EN': '6003', 'Culture AGAR': '6033', 'Q9 (FreshQ®)': '6024', 'Culture Trans': '6033', 'Trans Culture': '6033' };
 
+// Improved mapping for bag sizes with all possible variations
+const bagSizes = {
+    'NFDM': 22.7,
+    'MPC85': 20,
+    'MPC 85': 20,
+    'WPC85': 20,
+    'WPC 85': 20,
+    'WHEYPROTEIN': 20,
+    'WHEY PROTEIN': 20,
+    'COLFLO': 22.7,
+    'COLFLO ': 22.7,
+    'PRECISA': 22.7,
+    'PRECISA CREAM': 22.7,
+    'POLARTEX': 22.7,
+    'POLARTEX 06748': 22.7,
+    'LACTONAT': 25,
+    'LACTONAT EN': 25
+};
+
 // --- COMPONENT ---
 function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalForm }) {
     const [recipeName, setRecipeName] = useState(originalForm?.recipeName || '');
@@ -344,12 +363,25 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                                                     <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Code</th>
                                                     <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Ingredient</th>
                                                     <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Target Amount</th>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Actual Use</th>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Actual Use (Bags)</th>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Partial KGs</th>
                                                     <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Lot #</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {ingredients.map((ing, index) => (
+                                            {ingredients.map((ing, index) => {
+                                                // Normalize ingredient name for matching
+                                                const normName = ing.name.replace(/\s+/g, '').toUpperCase();
+                                                const bagKey = Object.keys(bagSizes).find(key => normName.includes(key.replace(/\s+/g, '').toUpperCase()));
+                                                let bags = '';
+                                                let partial = '';
+                                                let target = parseFloat(ing.targetAmount);
+                                                if (bagKey && !isNaN(target)) {
+                                                    const kgPerBag = bagSizes[bagKey];
+                                                    bags = Math.floor(target / kgPerBag);
+                                                    partial = (target - bags * kgPerBag).toFixed(2);
+                                                }
+                                                return (
                                                     <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
                                                         <td className="p-3 border border-gray-300 bg-gray-50 font-medium">{ing.code}</td>
                                                         <td className="p-3 border border-gray-300 font-medium">{ing.name}</td>
@@ -364,10 +396,19 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                                                         <td className="p-3 border border-gray-300">
                                                             <input 
                                                                 type="text" 
-                                                                value={ing.actualUse} 
+                                                                value={bagKey ? bags : ing.actualUse} 
                                                                 onChange={(e) => handleIngredientChange(index, 'actualUse', e.target.value)} 
                                                                 className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
                                                                 required 
+                                                            />
+                                                        </td>
+                                                        <td className="p-3 border border-gray-300">
+                                                            <input 
+                                                                type="text" 
+                                                                value={bagKey ? partial : ''} 
+                                                                onChange={(e) => handleIngredientChange(index, 'partialKgs', e.target.value)} 
+                                                                className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                                                readOnly={!!bagKey} 
                                                             />
                                                         </td>
                                                         <td className="p-3 border border-gray-300">
@@ -380,7 +421,8 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                                                             />
                                                         </td>
                                                 </tr>
-                                            ))}
+                                            );
+                                            })}
                                         </tbody>
                                     </table>
                                     </div>

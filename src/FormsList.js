@@ -43,10 +43,16 @@ function FormsList({ onFormSelect }) {
         ],
         'Hummus/Dips': [
             {
-                id: 'hummus-batch-sheet',
-                title: 'Hummus Batch Sheet',
-                formType: 'hummusBatchSheet',
-                description: 'Batch sheet for hummus production'
+                id: 'dynamic-hummus-dips-batch-sheet',
+                title: 'Dynamic Hummus/Dips Batch Sheet',
+                formType: 'dynamicHummusDipsBatchSheet',
+                description: 'Dynamic batch sheet for all hummus and dips recipes'
+            },
+            {
+                id: 'chickpeas-batching-process',
+                title: 'F-10: Chickpeas Batching Process',
+                formType: 'chickpeasBatchingProcess',
+                description: 'Batching process record for cooked chickpeas'
             }
         ]
     };

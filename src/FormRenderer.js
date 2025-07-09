@@ -3,6 +3,8 @@ import BatchSheet from './BatchSheet';
 import YogurtFinalTimeCutRecord from './YogurtFinalTimeCutRecord';
 import YogurtPasteurizationMonitoring from './YogurtPasteurizationMonitoring';
 import YogurtBatchingProcess from './YogurtBatchingProcess';
+import DipsBatchSheet from './DipsBatchSheet';
+import ChickpeasBatchingProcess from './ChickpeasBatchingProcess';
 // In the future, you would import other form components here
 // import SimpleCheckForm from './SimpleCheckForm';
 
@@ -21,6 +23,12 @@ function FormRenderer({ form, onBack }) {
         
         case 'yogurtBatchingProcess':
             return <YogurtBatchingProcess formTemplate={form} onBack={onBack} />;
+        
+        case 'dynamicHummusDipsBatchSheet':
+            return <DipsBatchSheet formTemplate={form} onBack={onBack} />;
+        
+        case 'chickpeasBatchingProcess':
+            return <ChickpeasBatchingProcess formTemplate={form} onBack={onBack} />;
         
         // case 'simpleCheck':
         //     return <SimpleCheckForm formTemplate={form} onBack={onBack} />;
