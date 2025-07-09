@@ -30,25 +30,38 @@ function Archive({ onFormSelect }) {
     }, []);
 
     const filteredForms = approvedForms.filter(form => 
+        (form.formTitle?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
         (form.recipeName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
         (form.batchBy?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
         (form.batchDate?.toLowerCase() || '').includes(searchTerm.toLowerCase())
     );
 
     const getFormTypes = () => {
-        const types = filteredForms.map(form => form.recipeName);
+        const types = filteredForms.map(form => {
+            // For existing forms without formTitle, use a default title
+            if (!form.formTitle) {
+                return "F-06: Dynamic Yogurt Batch Sheet";
+            }
+            return form.formTitle;
+        });
         return [...new Set(types)];
     };
 
     const getDatesForFormType = (formType) => {
         const dates = filteredForms
-            .filter(form => form.recipeName === formType)
+            .filter(form => {
+                const formTitle = form.formTitle || "F-06: Dynamic Yogurt Batch Sheet";
+                return formTitle === formType;
+            })
             .map(form => form.batchDate);
         return [...new Set(dates)].sort((a, b) => new Date(b) - new Date(a));
     };
     
     const getFormsForDate = (formType, date) => {
-        return filteredForms.filter(form => form.recipeName === formType && form.batchDate === date);
+        return filteredForms.filter(form => {
+            const formTitle = form.formTitle || "F-06: Dynamic Yogurt Batch Sheet";
+            return formTitle === formType && form.batchDate === date;
+        });
     };
 
     const handleFormTypeClick = (type) => {
@@ -122,12 +135,14 @@ function Archive({ onFormSelect }) {
                     <div className="bg-white rounded-2xl shadow-md">
                         <ul className="divide-y divide-gray-200">
                             {getFormsForDate(selectedFormType, selectedDate).map(form => (
-                                <li key={form.id} className="p-4 flex items-center justify-between">
+                                <li key={form.id} 
+                                    onClick={() => onFormSelect(form)} 
+                                    className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors">
                                     <div className="flex items-center">
                                         <DocumentIcon />
                                         <div className="ml-3">
-                                            <p className="font-bold text-gray-800">{form.recipeName}</p>
-                                            <p className="text-sm text-gray-600">Submitted by: {form.batchBy || 'N/A'}</p>
+                                            <p className="font-bold text-gray-800">{form.formTitle || "F-06: Dynamic Yogurt Batch Sheet"}</p>
+                                            <p className="text-sm text-gray-600">Recipe: {form.recipeName} | Submitted by: {form.batchBy || 'N/A'}</p>
                                         </div>
                                     </div>
                                     <p className="text-xs text-gray-400">ID: {form.id.substring(0, 6)}...</p>

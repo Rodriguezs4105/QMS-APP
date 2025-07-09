@@ -13,6 +13,44 @@ function FormsList({ onFormSelect }) {
     
     const colorClasses = ["bg-gradient-to-r from-cyan-400 to-blue-500", "bg-gradient-to-r from-red-400 to-pink-500", "bg-gradient-to-r from-sky-400 to-cyan-400", "bg-gradient-to-r from-amber-400 to-orange-500", "bg-gradient-to-r from-emerald-400 to-teal-500", "bg-gradient-to-r from-indigo-400 to-purple-500"];
 
+    // Define available forms for each category
+    const availableForms = {
+        'Yogurt': [
+            {
+                id: 'batch-sheet',
+                title: 'F-06: Dynamic Yogurt Batch Sheet',
+                formType: 'batchSheet',
+                description: 'Complete batch sheet for yogurt production'
+            },
+            {
+                id: 'yogurt-final-time-cut',
+                title: 'F-03: Yogurt Final Time and Cut Record',
+                formType: 'yogurtFinalTimeCut',
+                description: 'Final time and cut record with pH monitoring'
+            },
+            {
+                id: 'yogurt-pasteurization-monitoring',
+                title: 'F-04: Yogurt Pasteurization to Fermentation Monitoring Record',
+                formType: 'yogurtPasteurizationMonitoring',
+                description: 'Pasteurization to fermentation monitoring with cut time calculation'
+            },
+            {
+                id: 'yogurt-batching-process',
+                title: 'F-05: Yogurt Batching Process Record',
+                formType: 'yogurtBatchingProcess',
+                description: 'Yogurt batching process with mixing and sheer steps'
+            }
+        ],
+        'Hummus/Dips': [
+            {
+                id: 'hummus-batch-sheet',
+                title: 'Hummus Batch Sheet',
+                formType: 'hummusBatchSheet',
+                description: 'Batch sheet for hummus production'
+            }
+        ]
+    };
+
     useEffect(() => {
         if (!selectedCategory) {
             setForms([]);
@@ -21,21 +59,10 @@ function FormsList({ onFormSelect }) {
         }
 
         setLoading(true);
-        const q = query(
-            collection(db, "forms"), 
-            where("category", "==", selectedCategory)
-        );
-        
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const formsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setForms(formsData);
-            setLoading(false);
-        }, (error) => {
-            console.error("Error fetching filtered forms: ", error);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
+        // Use the predefined forms instead of fetching from Firestore
+        const categoryForms = availableForms[selectedCategory] || [];
+        setForms(categoryForms);
+        setLoading(false);
     }, [selectedCategory]);
 
     if (!selectedCategory) {
@@ -79,7 +106,7 @@ function FormsList({ onFormSelect }) {
                         <FormCard 
                             rank={index + 1}
                             title={form.title}
-                            user={form.status}
+                            user={form.description}
                             avatarUrl={`https://placehold.co/100x100/FFFFFF/333333?text=${form.title.charAt(0)}&font=sans`}
                             colorClass={colorClasses[index % colorClasses.length]}
                         />

@@ -142,7 +142,7 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
             recipeName,
             ingredients,
             calculatedValues,
-            formTitle: formTemplate.title,
+            formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet",
             submittedBy: user?.email || 'Unknown User',
             submittedAt: serverTimestamp(),
             status: "Pending Review"
@@ -176,102 +176,284 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
             </header>
             
             <main className="p-4">
-                <form onSubmit={handleSubmit} className="max-w-5xl mx-auto bg-white p-4 sm:p-8 rounded-lg shadow-lg border">
-                    <div className="space-y-6">
-                        <div className="bg-gray-100 p-4 rounded-lg border">
-                            <label htmlFor="recipe-select" className="block text-lg font-medium text-gray-700 mb-2">Select Recipe</label>
-                            <select id="recipe-select" value={recipeName} onChange={(e) => handleRecipeChange(e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" required>
+                <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
+                    {/* Recipe Selection */}
+                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                            <label htmlFor="recipe-select" className="block text-lg font-semibold text-gray-700 mb-3">Select Recipe</label>
+                            <select 
+                                id="recipe-select" 
+                                value={recipeName} 
+                                onChange={(e) => handleRecipeChange(e.target.value)} 
+                                className="w-full bg-white border-2 border-blue-300 rounded-lg px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                required
+                            >
                                 <option value="">-- Choose a Recipe --</option>
                                 {Object.keys(recipeData).map(name => <option key={name} value={name}>{name}</option>)}
                             </select>
                         </div>
+                        </div>
 
                         {recipeName && (
-                            <div className="space-y-6 text-sm">
-                                {/* Batch Info Table */}
-                                <table className="w-full border-collapse">
-                                    <tbody>
-                                        <tr className="flex flex-col md:table-row">
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell"><span className="font-bold md:hidden">Date:</span><input type="date" name="batchDate" value={formData.batchDate} onChange={handleInputChange} className="border-b text-right md:text-left" required/></td>
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell"><span className="font-bold md:hidden">Batch By:</span><input type="text" name="batchBy" value={formData.batchBy} onChange={handleInputChange} placeholder="Initials" className="border-b text-right md:text-left" required/></td>
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell" colSpan="2"><span className="font-bold md:hidden">Recipe:</span><span className="text-right md:text-left">{recipeName}</span></td>
-                                        </tr>
-                                        <tr className="flex flex-col md:table-row">
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell"><span className="font-bold md:hidden">Shelf Life:</span><input type="text" value={calculatedValues.shelfLife} className="bg-gray-200 text-right md:text-left" readOnly/></td>
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell"><span className="font-bold md:hidden">Expiry:</span><input type="date" value={calculatedValues.expiryDate} className="bg-gray-200 text-right md:text-left" readOnly/></td>
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell"><span className="font-bold md:hidden">Batch #:</span><input type="number" name="batchNumber" value={formData.batchNumber} onChange={handleInputChange} placeholder="e.g., 1" className="border-b text-right md:text-left" required/></td>
-                                            <td className="p-2 border md:border-b flex justify-between md:table-cell"><span className="font-bold md:hidden">Lot #:</span><input type="text" value={calculatedValues.lotNumber} className="bg-gray-200 text-right md:text-left" readOnly/></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                        <div className="space-y-6">
+                            {/* Recipe Information */}
+                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Recipe Information</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Batch Date</label>
+                                            <input 
+                                                type="date" 
+                                                name="batchDate" 
+                                                value={formData.batchDate} 
+                                                onChange={handleInputChange} 
+                                                className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                                required
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Batch By (Initials)</label>
+                                            <input 
+                                                type="text" 
+                                                name="batchBy" 
+                                                value={formData.batchBy} 
+                                                onChange={handleInputChange} 
+                                                placeholder="Enter initials" 
+                                                className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                                required
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Batch Number</label>
+                                            <input 
+                                                type="number" 
+                                                name="batchNumber" 
+                                                value={formData.batchNumber} 
+                                                onChange={handleInputChange} 
+                                                placeholder="e.g., 1" 
+                                                className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                                required
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Recipe</label>
+                                            <div className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium">
+                                                {recipeName}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                                {/* Mixing Tank */}
-                                <div className="flex items-center gap-4">
-                                    <strong>Mixing Tank No:</strong>
-                                    <label className="flex items-center"><input type="checkbox" name="mixingTank" value="1" onChange={handleInputChange} className="w-4 h-4 mr-2"/> 1</label>
-                                    <label className="flex items-center"><input type="checkbox" name="mixingTank" value="2" onChange={handleInputChange} className="w-4 h-4 mr-2"/> 2</label>
+                            {/* Calculated Values */}
+                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Calculated Values</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Shelf Life</label>
+                                            <input 
+                                                type="text" 
+                                                value={calculatedValues.shelfLife} 
+                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
+                                                readOnly
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Expiry Date</label>
+                                            <input 
+                                                type="text" 
+                                                value={calculatedValues.expiryDate} 
+                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
+                                                readOnly
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Lot Number</label>
+                                            <input 
+                                                type="text" 
+                                                value={calculatedValues.lotNumber} 
+                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
+                                                readOnly
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="block text-sm font-medium text-gray-600">Theoretical Yield</label>
+                                            <input 
+                                                type="text" 
+                                                value={calculatedValues.theoreticalYield} 
+                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
+                                                readOnly
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Mixing Tank Selection */}
+                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Mixing Tank Selection</h3>
+                                    <div className="flex flex-wrap gap-6">
+                                        {[1, 2].map(tank => (
+                                            <label key={tank} className="flex items-center space-x-3 cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    name="mixingTank" 
+                                                    value={tank} 
+                                                    onChange={handleInputChange} 
+                                                    className="w-5 h-5 text-blue-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-200"
+                                                />
+                                                <span className="text-lg font-medium text-gray-700">Tank {tank}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
                                 </div>
 
-                                {/* Mix Preparation */}
-                                <div>
-                                    <h3 className="text-lg font-semibold text-center mb-2">MIX PREPARATION</h3>
-                                    <div className="mt-4">
-                                        <label htmlFor="base-ingredient-amount" className="block text-md font-medium text-gray-700 mb-2">{recipeData[recipeName]?.baseIngredient} Amount (kg)</label>
-                                        <input type="number" step="any" name="baseIngredientAmount" value={formData.baseIngredientAmount} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-gray-900" required/>
+                            {/* Base Ingredient */}
+                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Base Ingredient</h3>
+                                    <div className="space-y-2">
+                                        <label htmlFor="base-ingredient-amount" className="block text-sm font-medium text-gray-600">
+                                            {recipeData[recipeName]?.baseIngredient} Amount (kg)
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            step="any" 
+                                            name="baseIngredientAmount" 
+                                            value={formData.baseIngredientAmount} 
+                                            onChange={handleInputChange} 
+                                            className="w-full bg-white border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-colors" 
+                                            required
+                                        />
                                     </div>
-                                    <table className="w-full text-sm text-left border-collapse mt-4">
-                                        <thead className="bg-gray-200 text-gray-800 hidden md:table-header-group">
-                                            <tr>
-                                                <th className="p-2 border w-1/6 text-center">CODE</th>
-                                                <th className="p-2 border w-2/6">INGREDIENT</th>
-                                                <th className="p-2 border w-1/6">TARGET AMOUNT</th>
-                                                <th className="p-2 border w-1/6">ACTUAL USE</th>
-                                                <th className="p-2 border w-1/6">LOT #</th>
+                                </div>
+                            </div>
+
+                            {/* Ingredients Table */}
+                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                <div className="bg-white p-4 rounded-lg border border-gray-200">
+                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Ingredients</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm border-collapse">
+                                            <thead className="bg-gray-100">
+                                                <tr>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Code</th>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Ingredient</th>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Target Amount</th>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Actual Use</th>
+                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Lot #</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {ingredients.map((ing, index) => (
-                                                <tr key={index} className="block md:table-row mb-4 md:mb-0 border md:border-none rounded-lg overflow-hidden">
-                                                    <td className="p-2 border-b md:border flex justify-between items-center"><span className="font-bold md:hidden">Code:</span>{ing.code}</td>
-                                                    <td className="p-2 border-b md:border flex justify-between items-center"><span className="font-bold md:hidden">Ingredient:</span>{ing.name}</td>
-                                                    <td className="p-2 border-b md:border flex justify-between items-center"><span className="font-bold md:hidden">Target:</span><input type="text" value={`${ing.targetAmount} ${ing.isRatio ? 'kg' : ''}`} className="w-1/2 md:w-full bg-gray-200 text-right md:text-left" readOnly /></td>
-                                                    <td className="p-2 border-b md:border flex justify-between items-center"><span className="font-bold md:hidden">Actual:</span><input type="text" value={ing.actualUse} onChange={(e) => handleIngredientChange(index, 'actualUse', e.target.value)} className="w-1/2 md:w-full border-b text-right md:text-left" required /></td>
-                                                    <td className="p-2 md:border flex justify-between items-center"><span className="font-bold md:hidden">Lot #:</span><input type="text" value={ing.lot} onChange={(e) => handleIngredientChange(index, 'lot', e.target.value)} className="w-1/2 md:w-full border-b text-right md:text-left" required /></td>
+                                                    <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
+                                                        <td className="p-3 border border-gray-300 bg-gray-50 font-medium">{ing.code}</td>
+                                                        <td className="p-3 border border-gray-300 font-medium">{ing.name}</td>
+                                                        <td className="p-3 border border-gray-300">
+                                                            <input 
+                                                                type="text" 
+                                                                value={`${ing.targetAmount} ${ing.isRatio ? 'kg' : ''}`} 
+                                                                className="w-full bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-700 font-medium" 
+                                                                readOnly 
+                                                            />
+                                                        </td>
+                                                        <td className="p-3 border border-gray-300">
+                                                            <input 
+                                                                type="text" 
+                                                                value={ing.actualUse} 
+                                                                onChange={(e) => handleIngredientChange(index, 'actualUse', e.target.value)} 
+                                                                className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                                                required 
+                                                            />
+                                                        </td>
+                                                        <td className="p-3 border border-gray-300">
+                                                            <input 
+                                                                type="text" 
+                                                                value={ing.lot} 
+                                                                onChange={(e) => handleIngredientChange(index, 'lot', e.target.value)} 
+                                                                className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
+                                                                required 
+                                                            />
+                                                        </td>
                                                 </tr>
                                             ))}
                                         </tbody>
-                                        <tfoot className="hidden md:table-footer-group">
-                                            <tr className="bg-gray-200 font-bold">
-                                                <td colSpan="2" className="p-2 border text-right">Theoretical Batch Yield</td>
-                                                <td className="p-2 border"><input type="text" value={calculatedValues.theoreticalYield} className="w-full bg-gray-100" readOnly/></td>
-                                                <td colSpan="2" className="border"></td>
-                                            </tr>
-                                        </tfoot>
                                     </table>
+                                    </div>
+                                </div>
                                 </div>
 
                                 {/* Transfer and Yield */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div>
-                                        <strong>Batch transferred to:</strong>
-                                        <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Transfer Tanks */}
+                                <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                    <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                                        <h3 className="text-lg font-semibold mb-4 text-gray-700">Batch Transfer</h3>
+                                        <p className="text-sm text-gray-600 mb-3">Select tanks to transfer batch to:</p>
+                                        <div className="grid grid-cols-2 gap-3">
                                             {['FT1', 'FT2', 'FT3', 'FT4', 'FT5'].map(tank => (
-                                                <label key={tank} className="flex items-center"><input type="checkbox" name="transferTo" value={tank} onChange={handleInputChange} className="w-4 h-4 mr-2"/> {tank}</label>
+                                                <label key={tank} className="flex items-center space-x-3 cursor-pointer">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        name="transferTo" 
+                                                        value={tank} 
+                                                        onChange={handleInputChange} 
+                                                        className="w-4 h-4 text-orange-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-orange-200"
+                                                    />
+                                                    <span className="text-sm font-medium text-gray-700">{tank}</span>
+                                                </label>
                                             ))}
                                         </div>
                                     </div>
+                                </div>
+
+                                {/* Batch Yield */}
+                                <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                    <div className="bg-teal-50 p-4 rounded-lg border border-teal-200">
+                                        <h3 className="text-lg font-semibold mb-4 text-gray-700">Batch Yield</h3>
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <label className="block text-sm font-medium text-gray-600">Batch Yield</label>
+                                                <input 
+                                                    type="text" 
+                                                    name="batchYield" 
+                                                    value={formData.batchYield} 
+                                                    onChange={handleInputChange} 
+                                                    placeholder="Enter batch yield" 
+                                                    className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-colors"
+                                                />
+                                    </div>
                                     <div className="space-y-2">
-                                        <label className="block"><strong>BATCH YIELD:</strong><input type="text" name="batchYield" value={formData.batchYield} onChange={handleInputChange} className="w-full border-b" /></label>
-                                        <label className="block"><strong>Performed by (Initials):</strong><input type="text" name="yieldPerformedBy" value={formData.yieldPerformedBy} onChange={handleInputChange} className="w-full border-b" /></label>
+                                                <label className="block text-sm font-medium text-gray-600">Performed by (Initials)</label>
+                                                <input 
+                                                    type="text" 
+                                                    name="yieldPerformedBy" 
+                                                    value={formData.yieldPerformedBy} 
+                                                    onChange={handleInputChange} 
+                                                    placeholder="Enter initials" 
+                                                    className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-colors"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                     </div>
                                 </div>
                                 
-                                <button type="submit" className="mt-6 w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-blue-600">
+                            {/* Submit Button */}
+                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
+                                <button 
+                                    type="submit" 
+                                    className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
+                                >
                                     {isEditing ? 'Update and Resubmit' : 'Submit Batch Sheet'}
                                 </button>
                             </div>
+                            </div>
                         )}
-                    </div>
                 </form>
             </main>
         </div>
