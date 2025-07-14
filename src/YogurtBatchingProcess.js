@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection } from './firebase';
+import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 
-function YogurtBatchingProcess({ onBack, isEditing = false, onSave, originalForm }) {
+function YogurtBatchingProcess({ onBack, isEditing = false, onSave, originalForm, onSubmit }) {
     const [formData, setFormData] = useState({
         date: originalForm?.date || new Date().toISOString().split('T')[0],
         batchSize: originalForm?.batchSize || '',
@@ -45,6 +45,30 @@ function YogurtBatchingProcess({ onBack, isEditing = false, onSave, originalForm
         setFormData(prev => ({ ...prev, date: new Date().toISOString().split('T')[0] }));
     };
 
+    const handleSaveForLater = async () => {
+        const user = auth.currentUser;
+
+        const savedData = {
+            ...formData,
+            mainBatchingData,
+            mixingSheerData,
+            formTitle: "F-05: Yogurt Batching Process Record",
+            formType: 'yogurtBatchingProcess',
+            savedBy: user?.email || 'Unknown User',
+            savedAt: serverTimestamp(),
+            status: "Saved for Later"
+        };
+        
+        try {
+            await addDoc(collection(db, "savedForms"), savedData);
+            alert("Form saved for later! You can continue editing it from your dashboard.");
+            onBack();
+        } catch (error) {
+            console.error("Error saving form: ", error);
+            alert("Error saving form. See console for details.");
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
@@ -63,6 +87,9 @@ function YogurtBatchingProcess({ onBack, isEditing = false, onSave, originalForm
         try {
             if (isEditing && onSave) {
                 await onSave(finalData);
+            } else if (onSubmit) {
+                // Handle saved form submission
+                await onSubmit(finalData);
             } else {
                 const newFormRef = doc(collection(db, "completedForms"));
                 await setDoc(newFormRef, finalData);
@@ -272,14 +299,23 @@ function YogurtBatchingProcess({ onBack, isEditing = false, onSave, originalForm
                         </div>
                     </div>
 
-                    {/* Submit Button */}
+                    {/* Action Buttons */}
                     <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <button 
-                            type="submit" 
-                            className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
-                        >
-                            {isEditing ? 'Update and Resubmit' : 'Submit Form'}
-                        </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button 
+                                type="button"
+                                onClick={handleSaveForLater}
+                                className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-yellow-600 hover:to-orange-600 transform hover:scale-105 transition-all duration-200 text-lg"
+                            >
+                                Save for Later
+                            </button>
+                            <button 
+                                type="submit" 
+                                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
+                            >
+                                {isEditing && onSubmit ? 'Submit for Review' : isEditing ? 'Update and Resubmit' : 'Submit Form'}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </main>

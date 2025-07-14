@@ -14,6 +14,7 @@ import VerificationDetail from './VerificationDetail';
 import Archive from './Archive';
 import FormEditor from './FormEditor';
 import FormViewer from './FormViewer';
+import SavedFormEditor from './SavedFormEditor';
 
 // --- Navigation Icons ---
 const HomeIcon = ({ isActive }) => <svg viewBox="0 0 24 24" className={`w-6 h-6 ${isActive ? 'text-purple-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>;
@@ -28,6 +29,7 @@ function App() {
   const [selectedForm, setSelectedForm] = useState(null);
   const [formToVerify, setFormToVerify] = useState(null);
   const [formToEdit, setFormToEdit] = useState(null);
+  const [savedFormToEdit, setSavedFormToEdit] = useState(null);
   const [archivedForm, setArchivedForm] = useState(null);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
@@ -64,11 +66,13 @@ function App() {
   const handleFormSelect = (form) => setSelectedForm(form);
   const handleVerificationSelect = (form) => setFormToVerify(form);
   const handleFormEdit = (form) => setFormToEdit(form);
+  const handleSavedFormEdit = (form) => setSavedFormToEdit(form);
   const handleArchivedFormSelect = (form) => setArchivedForm(form);
   const handleBack = () => {
     setSelectedForm(null);
     setFormToVerify(null);
     setFormToEdit(null);
+    setSavedFormToEdit(null);
     setArchivedForm(null);
   };
   const handleNavigate = (targetPage) => setPage(targetPage);
@@ -84,17 +88,18 @@ function App() {
   );
 
   if (formToEdit) return <FormEditor form={formToEdit} onBack={handleBack} />;
+  if (savedFormToEdit) return <SavedFormEditor savedForm={savedFormToEdit} onBack={handleBack} />;
   if (formToVerify) return <VerificationDetail form={formToVerify} onBack={handleBack} />;
   if (archivedForm) return <FormViewer form={archivedForm} onBack={handleBack} onDelete={() => setArchivedForm(null)} />;
   if (selectedForm) return <FormRenderer form={selectedForm} onBack={handleBack} />;
 
   const renderPage = () => {
     const role = userProfile.role;
-    if (page === 'Dashboard') return role === 'manager' ? <ManagerDashboard onFormSelect={handleVerificationSelect} /> : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} />;
+    if (page === 'Dashboard') return role === 'manager' ? <ManagerDashboard onFormSelect={handleVerificationSelect} onSavedFormSelect={handleSavedFormEdit} /> : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} onSavedFormSelect={handleSavedFormEdit} />;
     if (page === 'Forms') return <FormsList onFormSelect={handleFormSelect} />;
     if (page === 'Archive') return <Archive onFormSelect={handleArchivedFormSelect} />;
     if (page === 'Settings') return <Settings handleSignOut={handleSignOut} />;
-    return role === 'manager' ? <ManagerDashboard onFormSelect={handleVerificationSelect} /> : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} />;
+    return role === 'manager' ? <ManagerDashboard onFormSelect={handleVerificationSelect} onSavedFormSelect={handleSavedFormEdit} /> : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} />;
   };
 
   return (

@@ -1,15 +1,19 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 // 🔧 FIX: Changed getAuth to auth, which is the exported instance from your firebase.js
-import { db, doc, updateDoc, auth } from './firebase';
+import { db, doc, updateDoc, deleteDoc, auth } from './firebase';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
+import AuditTrailViewer from './components/AuditTrailViewer';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 const DownloadIcon = () => <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>;
+const DeleteIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 
 function VerificationDetail({ form, onBack }) {
     const pdfRef = useRef();
+    const [showAuditTrail, setShowAuditTrail] = useState(false);
     // 🔧 FIX: The imported `auth` object is used directly. The line `const auth = getAuth()` was removed.
     const managerName = auth.currentUser?.displayName || auth.currentUser?.email || "Manager";
 
@@ -18,6 +22,21 @@ function VerificationDetail({ form, onBack }) {
         const formRef = doc(db, "completedForms", form.id);
         try {
             await updateDoc(formRef, { status: "Approved", verifiedBy: managerName, verifiedAt: new Date() });
+            
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_APPROVED,
+                form.id,
+                form.formType || 'unknown',
+                form.formTitle || 'Unknown Form',
+                {
+                    recipeName: form.recipeName,
+                    batchNumber: form.batchNumber,
+                    batchDate: form.batchDate,
+                    verifiedBy: managerName
+                }
+            );
+            
             alert("Form Approved!");
             onBack();
         } catch (error) {
@@ -35,11 +54,55 @@ function VerificationDetail({ form, onBack }) {
         const formRef = doc(db, "completedForms", form.id);
         try {
             await updateDoc(formRef, { status: "Rejected", rejectionReason: reason, rejectedBy: managerName, rejectedAt: new Date() });
+            
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_REJECTED,
+                form.id,
+                form.formType || 'unknown',
+                form.formTitle || 'Unknown Form',
+                {
+                    recipeName: form.recipeName,
+                    batchNumber: form.batchNumber,
+                    batchDate: form.batchDate,
+                    rejectedBy: managerName,
+                    rejectionReason: reason
+                }
+            );
+            
             alert("Form Rejected and sent back to the employee for corrective action.");
             onBack();
         } catch (error) {
             console.error("Error rejecting form: ", error);
             alert("Failed to reject form.");
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!window.confirm("Are you sure you want to delete this form? This action cannot be undone.")) return;
+        const formRef = doc(db, "completedForms", form.id);
+        try {
+            await deleteDoc(formRef);
+            
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_DELETED,
+                form.id,
+                form.formType || 'unknown',
+                form.formTitle || 'Unknown Form',
+                {
+                    recipeName: form.recipeName,
+                    batchNumber: form.batchNumber,
+                    batchDate: form.batchDate,
+                    deletedBy: managerName
+                }
+            );
+            
+            alert("Form deleted successfully!");
+            onBack();
+        } catch (error) {
+            console.error("Error deleting form: ", error);
+            alert("Failed to delete form.");
         }
     };
 
@@ -129,19 +192,41 @@ function VerificationDetail({ form, onBack }) {
                 </div>
 
                 <div className="p-4 mt-4 bg-white rounded-lg shadow-md">
-                     <button onClick={handleDownloadPDF} className="mb-4 w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-gray-700 flex items-center justify-center">
-                        <DownloadIcon />
-                        Download as PDF
-                    </button>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <button onClick={handleDownloadPDF} className="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-gray-700 flex items-center justify-center">
+                            <DownloadIcon />
+                            Download as PDF
+                        </button>
+                        <button 
+                            onClick={() => setShowAuditTrail(!showAuditTrail)} 
+                            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-blue-700 flex items-center justify-center"
+                        >
+                            📋 {showAuditTrail ? 'Hide' : 'Show'} Audit Trail
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
                         <button onClick={handleReject} className="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-red-600">
                             Reject
                         </button>
                         <button onClick={handleApprove} className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-green-600">
                             Approve
                         </button>
+                        <button onClick={handleDelete} className="w-full bg-red-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-red-800 flex items-center justify-center">
+                            <DeleteIcon />
+                            Delete
+                        </button>
                     </div>
                 </div>
+
+                {/* Audit Trail Section */}
+                {showAuditTrail && (
+                    <div className="mt-4">
+                        <AuditTrailViewer 
+                            formId={form.id}
+                            title={`Audit Trail - ${form.formTitle || form.recipeName}`}
+                        />
+                    </div>
+                )}
             </main>
         </div>
     );

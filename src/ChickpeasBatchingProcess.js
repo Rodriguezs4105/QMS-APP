@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection } from './firebase';
+import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
 
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 
@@ -26,17 +26,17 @@ const storageRecordCols = [
   { key: 'initials', label: 'Initials', type: 'text' }
 ];
 
-function ChickpeasBatchingProcess({ formTemplate, onBack }) {
+function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onSave, originalForm, onSubmit }) {
   const [formData, setFormData] = useState({
-    date: '',
-    quantity_cooked: '',
-    batched_by: '',
-    batch_name: '',
-    lot_cooked: '',
-    lot_raw: '',
-    qc_ph: '',
-    cooking_params: cookingParamsRows.map(() => ({ start_time: '', end_time: '', temperature: '', comments: '', initials: '' })),
-    storage_record: storageRecordRows.map(() => ({ date: '', time: '', temperature: '', comments: '', initials: '' }))
+    date: originalForm?.date || '',
+    quantity_cooked: originalForm?.quantity_cooked || '',
+    batched_by: originalForm?.batched_by || '',
+    batch_name: originalForm?.batch_name || '',
+    lot_cooked: originalForm?.lot_cooked || '',
+    lot_raw: originalForm?.lot_raw || '',
+    qc_ph: originalForm?.qc_ph || '',
+    cooking_params: originalForm?.cooking_params || cookingParamsRows.map(() => ({ start_time: '', end_time: '', temperature: '', comments: '', initials: '' })),
+    storage_record: originalForm?.storage_record || storageRecordRows.map(() => ({ date: '', time: '', temperature: '', comments: '', initials: '' }))
   });
 
   const handleInputChange = (e) => {
@@ -55,6 +55,27 @@ function ChickpeasBatchingProcess({ formTemplate, onBack }) {
     setFormData(prev => ({ ...prev, [field]: new Date().toISOString().split('T')[0] }));
   };
 
+  const handleSaveForLater = async () => {
+    const user = auth.currentUser;
+    const savedData = {
+      ...formData,
+      formTitle: formTemplate?.title || 'F-10: Chickpeas Batching Process',
+      formType: 'chickpeasBatchingProcess',
+      savedBy: user?.email || 'Unknown User',
+      savedAt: serverTimestamp(),
+      status: "Saved for Later"
+    };
+    
+    try {
+      await addDoc(collection(db, "savedForms"), savedData);
+      alert("Form saved for later! You can continue editing it from your dashboard.");
+      onBack();
+    } catch (error) {
+      console.error("Error saving form: ", error);
+      alert("Error saving form. See console for details.");
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
@@ -65,11 +86,21 @@ function ChickpeasBatchingProcess({ formTemplate, onBack }) {
       submittedAt: serverTimestamp(),
       status: 'Pending Review'
     };
+    
     try {
-      const newFormRef = doc(collection(db, 'completedForms'));
-      await setDoc(newFormRef, finalData);
-      alert('Form submitted for review!');
-      onBack();
+      if (isEditing && onSave) {
+        // Update existing form
+        await onSave(finalData);
+      } else if (onSubmit) {
+        // Handle saved form submission
+        await onSubmit(finalData);
+      } else {
+        // Create new form
+        const newFormRef = doc(collection(db, 'completedForms'));
+        await setDoc(newFormRef, finalData);
+        alert('Form submitted for review!');
+        onBack();
+      }
     } catch (error) {
       console.error('Error submitting form: ', error);
       alert('Error submitting form. See console for details.');
@@ -168,7 +199,14 @@ function ChickpeasBatchingProcess({ formTemplate, onBack }) {
               <label htmlFor="qc_ph" className="block text-lg font-medium text-gray-700 mb-2">¹pH (Cooked Chickpeas)</label>
               <input type="text" id="qc_ph" name="qc_ph" value={formData.qc_ph} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end space-x-4">
+              <button 
+                type="button" 
+                onClick={handleSaveForLater}
+                className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-lg shadow-md hover:from-yellow-600 hover:to-orange-600 transition-colors"
+              >
+                Save for Later
+              </button>
               <button type="submit" className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-lg shadow-md hover:from-green-600 hover:to-emerald-600 transition-colors">Submit for Review</button>
             </div>
           </div>

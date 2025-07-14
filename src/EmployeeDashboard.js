@@ -6,17 +6,29 @@ const DocumentPlusIcon = () => <svg className="w-12 h-12 text-white" fill="none"
 const ClipboardIcon = () => <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>;
 const AlertTriangleIcon = () => <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>;
 
-function EmployeeDashboard({ onNavigate, onFormSelect }) {
+function EmployeeDashboard({ onNavigate, onFormSelect, onSavedFormSelect }) {
     const [rejectedForms, setRejectedForms] = useState([]);
+    const [savedForms, setSavedForms] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const q = query(collection(db, "completedForms"), where("status", "==", "Rejected"));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        // Fetch rejected forms
+        const rejectedQuery = query(collection(db, "completedForms"), where("status", "==", "Rejected"));
+        const rejectedUnsubscribe = onSnapshot(rejectedQuery, (snapshot) => {
             setRejectedForms(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        // Fetch saved forms
+        const savedQuery = query(collection(db, "savedForms"), where("status", "==", "Saved for Later"));
+        const savedUnsubscribe = onSnapshot(savedQuery, (snapshot) => {
+            setSavedForms(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        return () => {
+            rejectedUnsubscribe();
+            savedUnsubscribe();
+        };
     }, []);
 
     const handleAddBatchSheetTemplate = async () => {
@@ -56,6 +68,33 @@ function EmployeeDashboard({ onNavigate, onFormSelect }) {
                                                 <p className="font-bold text-gray-800">{form.recipeName}</p>
                                                 <p className="text-sm text-red-600">Rejected: {form.rejectionReason}</p>
                                                 <p className="text-xs text-gray-500">Click to edit and resubmit</p>
+                                            </div>
+                                        </div>
+                                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+
+                {savedForms.length > 0 && (
+                    <div className="mb-8">
+                        <h2 className="text-xl font-bold text-gray-800 mb-3">Saved Forms</h2>
+                        <div className="bg-white rounded-2xl shadow-md">
+                            <ul className="divide-y divide-gray-200">
+                                {savedForms.map(form => (
+                                    <li key={form.id} onClick={() => onSavedFormSelect(form)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50">
+                                        <div className="flex items-center">
+                                            <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                                            </svg>
+                                            <div className="ml-3">
+                                                <p className="font-bold text-gray-800">{form.recipeName || form.formTitle}</p>
+                                                <p className="text-sm text-yellow-600">Saved for later</p>
+                                                <p className="text-xs text-gray-500">Click to continue editing</p>
                                             </div>
                                         </div>
                                         <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

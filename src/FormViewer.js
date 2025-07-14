@@ -141,8 +141,8 @@ function FormViewer({ form, onBack, onDelete }) {
                                 <div className="bg-orange-50 p-4 rounded-lg border">
                                     <h3 className="text-lg font-semibold mb-3">Batch Transferred To</h3>
                                     <div className="flex flex-wrap gap-2">
-                                        {form.transferTo.map(tank => (
-                                            <span key={tank} className="bg-orange-200 px-3 py-1 rounded-full text-sm font-medium">
+                                        {form.transferTo.map((tank, index) => (
+                                            <span key={`${tank}-${index}`} className="bg-orange-200 px-3 py-1 rounded-full text-sm font-medium">
                                                 {tank}
                                             </span>
                                         ))}
@@ -195,20 +195,26 @@ function FormViewer({ form, onBack, onDelete }) {
                             <div className="bg-orange-50 p-4 rounded-lg border">
                                 <h3 className="text-lg font-semibold mb-3">Yogurt pH Monitoring</h3>
                                 <div className="space-y-4">
-                                    {form.phMonitoringData.map((tank, tankIndex) => (
-                                        <div key={tankIndex} className="bg-white p-3 rounded border">
-                                            <h4 className="font-bold text-center mb-2">Tank {tankIndex + 1}</h4>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                                                {tank.map((reading, readingIndex) => (
-                                                    <div key={readingIndex} className="bg-gray-50 p-2 rounded text-xs">
-                                                        <div className="font-medium mb-1">Reading {readingIndex + 1}</div>
-                                                        <div><strong>Time:</strong> {reading.time}</div>
-                                                        <div><strong>pH:</strong> {reading.ph}</div>
-                                                    </div>
-                                                ))}
+                                    {/* Group readings by tank */}
+                                    {Array.from({ length: 5 }, (_, tankIndex) => {
+                                        const tankReadings = form.phMonitoringData.filter(reading => reading.tankIndex === tankIndex);
+                                        if (tankReadings.length === 0) return null;
+                                        
+                                        return (
+                                            <div key={tankIndex} className="bg-white p-3 rounded border">
+                                                <h4 className="font-bold text-center mb-2">Tank {tankIndex + 1}</h4>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                                                    {tankReadings.map((reading, readingIndex) => (
+                                                        <div key={`${tankIndex}-${reading.readingIndex}`} className="bg-gray-50 p-2 rounded text-xs">
+                                                            <div className="font-medium mb-1">Reading {reading.readingIndex + 1}</div>
+                                                            <div><strong>Time:</strong> {reading.time}</div>
+                                                            <div><strong>pH:</strong> {reading.ph}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}

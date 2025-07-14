@@ -14,25 +14,25 @@ const ingredientCodes = { 'Chickpeas (Boiled)': '6064 / 6079', 'Boiled Chick pea
 
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 
-function DipsBatchSheet({ formTemplate, onBack }) {
-    const [recipeName, setRecipeName] = useState('');
+function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalForm, onSubmit }) {
+    const [recipeName, setRecipeName] = useState(originalForm?.recipeName || '');
     const [formData, setFormData] = useState({
-        date: '',
-        batchBy: '',
-        batchNumber: '',
-        lotNumber: '',
-        actualYield: '',
-        phValue: '',
-        cipFlush: false,
-        visualCheck: false,
-        changeover: false,
-        scaleTested: false,
-        mixerChecked: false,
-        specMet: false,
-        calibNeeded: false
+        date: originalForm?.date || '',
+        batchBy: originalForm?.batchBy || '',
+        batchNumber: originalForm?.batchNumber || '',
+        lotNumber: originalForm?.lotNumber || '',
+        actualYield: originalForm?.actualYield || '',
+        phValue: originalForm?.phValue || '',
+        cipFlush: originalForm?.cipFlush || false,
+        visualCheck: originalForm?.visualCheck || false,
+        changeover: originalForm?.changeover || false,
+        scaleTested: originalForm?.scaleTested || false,
+        mixerChecked: originalForm?.mixerChecked || false,
+        specMet: originalForm?.specMet || false,
+        calibNeeded: originalForm?.calibNeeded || false
     });
-    const [ingredientLots, setIngredientLots] = useState({});
-    const [calculatedValues, setCalculatedValues] = useState({
+    const [ingredientLots, setIngredientLots] = useState(originalForm?.ingredientLots || {});
+    const [calculatedValues, setCalculatedValues] = useState(originalForm?.calculatedValues || {
         theoreticalYield: '',
     });
 
@@ -80,6 +80,36 @@ function DipsBatchSheet({ formTemplate, onBack }) {
         setFormData(prev => ({ ...prev, [field]: new Date().toISOString().split('T')[0] }));
     };
 
+    const handleSaveForLater = async () => {
+        const user = auth.currentUser;
+        const recipe = hummusRecipeData[recipeName];
+        const savedData = {
+            ...formData,
+            recipeName,
+            ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
+                name,
+                code: ingredientCodes[name] || 'N/A',
+                amount,
+                lot: ingredientLots[name] || ''
+            })),
+            calculatedValues,
+            formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
+            formType: 'dynamicHummusDipsBatchSheet',
+            savedBy: user?.email || 'Unknown User',
+            savedAt: serverTimestamp(),
+            status: "Saved for Later"
+        };
+        
+        try {
+            await addDoc(collection(db, "savedForms"), savedData);
+            alert("Form saved for later! You can continue editing it from your dashboard.");
+            onBack();
+        } catch (error) {
+            console.error("Error saving form: ", error);
+            alert("Error saving form. See console for details.");
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
@@ -99,11 +129,21 @@ function DipsBatchSheet({ formTemplate, onBack }) {
             submittedAt: serverTimestamp(),
             status: 'Pending Review'
         };
+        
         try {
-            const newFormRef = doc(collection(db, 'completedForms'));
-            await setDoc(newFormRef, finalData);
-            alert('Form submitted for review!');
-            onBack();
+            if (isEditing && onSave) {
+                // Update existing form
+                await onSave(finalData);
+            } else if (onSubmit) {
+                // Handle saved form submission
+                await onSubmit(finalData);
+            } else {
+                // Create new form
+                const newFormRef = doc(collection(db, 'completedForms'));
+                await setDoc(newFormRef, finalData);
+                alert('Form submitted for review!');
+                onBack();
+            }
         } catch (error) {
             console.error('Error submitting form: ', error);
             alert('Error submitting form. See console for details.');
@@ -188,7 +228,14 @@ function DipsBatchSheet({ formTemplate, onBack }) {
                                     </tbody>
                                 </table>
                             </div>
-                            <div className="flex justify-end">
+                            <div className="flex justify-end space-x-4">
+                                <button 
+                                    type="button" 
+                                    onClick={handleSaveForLater}
+                                    className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-lg shadow-md hover:from-yellow-600 hover:to-orange-600 transition-colors"
+                                >
+                                    Save for Later
+                                </button>
                                 <button type="submit" className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-lg shadow-md hover:from-green-600 hover:to-emerald-600 transition-colors">Submit for Review</button>
                             </div>
                         </div>

@@ -8,27 +8,27 @@ import ChickpeasBatchingProcess from './ChickpeasBatchingProcess';
 // In the future, you would import other form components here
 // import SimpleCheckForm from './SimpleCheckForm';
 
-function FormRenderer({ form, onBack }) {
+function FormRenderer({ form, onBack, isEditing = false, onSave, originalForm, onSubmit }) {
     // This switch statement decides which form component to render
     // based on the 'formType' field from the Firestore document.
     switch (form.formType) {
         case 'batchSheet':
-            return <BatchSheet formTemplate={form} onBack={onBack} />;
+            return <BatchSheet formTemplate={form} onBack={onBack} isEditing={isEditing} onSave={onSave} originalForm={originalForm} onSubmit={onSubmit} />;
         
         case 'yogurtFinalTimeCut':
-            return <YogurtFinalTimeCutRecord formTemplate={form} onBack={onBack} />;
+            return <YogurtFinalTimeCutRecord formTemplate={form} onBack={onBack} isEditing={isEditing} onSave={onSave} originalForm={originalForm} onSubmit={onSubmit} />;
         
         case 'yogurtPasteurizationMonitoring':
-            return <YogurtPasteurizationMonitoring formTemplate={form} onBack={onBack} />;
+            return <YogurtPasteurizationMonitoring formTemplate={form} onBack={onBack} isEditing={isEditing} onSave={onSave} originalForm={originalForm} onSubmit={onSubmit} />;
         
         case 'yogurtBatchingProcess':
-            return <YogurtBatchingProcess formTemplate={form} onBack={onBack} />;
+            return <YogurtBatchingProcess formTemplate={form} onBack={onBack} isEditing={isEditing} onSave={onSave} originalForm={originalForm} onSubmit={onSubmit} />;
         
         case 'dynamicHummusDipsBatchSheet':
-            return <DipsBatchSheet formTemplate={form} onBack={onBack} />;
+            return <DipsBatchSheet formTemplate={form} onBack={onBack} isEditing={isEditing} onSave={onSave} originalForm={originalForm} onSubmit={onSubmit} />;
         
         case 'chickpeasBatchingProcess':
-            return <ChickpeasBatchingProcess formTemplate={form} onBack={onBack} />;
+            return <ChickpeasBatchingProcess formTemplate={form} onBack={onBack} isEditing={isEditing} onSave={onSave} originalForm={originalForm} onSubmit={onSubmit} />;
         
         // case 'simpleCheck':
         //     return <SimpleCheckForm formTemplate={form} onBack={onBack} />;

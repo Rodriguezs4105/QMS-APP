@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection } from './firebase';
+import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 const PlusIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>;
 const TrashIcon = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 
-function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalForm }) {
+function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalForm, onSubmit }) {
     const [formData, setFormData] = useState({
         date: originalForm?.date || new Date().toISOString().split('T')[0],
         lotNumbers: originalForm?.lotNumbers || [''],
@@ -20,9 +20,22 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
         processComments: ''
     })));
 
-    const [phMonitoringData, setPhMonitoringData] = useState(originalForm?.phMonitoringData || 
-        Array(5).fill().map(() => Array(5).fill().map(() => ({ time: '', ph: '' })))
-    );
+    const [phMonitoringData, setPhMonitoringData] = useState(() => {
+        if (originalForm?.phMonitoringData) {
+            // Convert flattened data back to nested structure
+            const nestedData = Array(5).fill().map(() => Array(5).fill().map(() => ({ time: '', ph: '' })));
+            originalForm.phMonitoringData.forEach(reading => {
+                if (reading.tankIndex !== undefined && reading.readingIndex !== undefined) {
+                    nestedData[reading.tankIndex][reading.readingIndex] = {
+                        time: reading.time || '',
+                        ph: reading.ph || ''
+                    };
+                }
+            });
+            return nestedData;
+        }
+        return Array(5).fill().map(() => Array(5).fill().map(() => ({ time: '', ph: '' })));
+    });
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -68,14 +81,58 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
         setFormData(prev => ({ ...prev, date: new Date().toISOString().split('T')[0] }));
     };
 
+    const handleSaveForLater = async () => {
+        const user = auth.currentUser;
+
+        // Convert nested arrays to a flat structure for Firestore
+        const flattenedPhMonitoringData = phMonitoringData.map((tank, tankIndex) => 
+            tank.map((reading, readingIndex) => ({
+                tankIndex,
+                readingIndex,
+                time: reading.time,
+                ph: reading.ph
+            }))
+        ).flat();
+
+        const savedData = {
+            ...formData,
+            finalCutData,
+            phMonitoringData: flattenedPhMonitoringData,
+            formTitle: "F-03: Yogurt Final Time and Cut Record",
+            formType: 'yogurtFinalTimeCut',
+            savedBy: user?.email || 'Unknown User',
+            savedAt: serverTimestamp(),
+            status: "Saved for Later"
+        };
+        
+        try {
+            await addDoc(collection(db, "savedForms"), savedData);
+            alert("Form saved for later! You can continue editing it from your dashboard.");
+            onBack();
+        } catch (error) {
+            console.error("Error saving form: ", error);
+            alert("Error saving form. See console for details.");
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
 
+        // Convert nested arrays to a flat structure for Firestore
+        const flattenedPhMonitoringData = phMonitoringData.map((tank, tankIndex) => 
+            tank.map((reading, readingIndex) => ({
+                tankIndex,
+                readingIndex,
+                time: reading.time,
+                ph: reading.ph
+            }))
+        ).flat();
+
         const finalData = {
             ...formData,
             finalCutData,
-            phMonitoringData,
+            phMonitoringData: flattenedPhMonitoringData,
             formTitle: "F-03: Yogurt Final Time and Cut Record",
             formType: 'yogurtFinalTimeCut',
             submittedBy: user?.email || 'Unknown User',
@@ -83,6 +140,10 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
             status: "Pending Review"
         };
         
+        if (onSubmit) {
+            await onSubmit(finalData);
+            return;
+        }
         try {
             if (isEditing && onSave) {
                 await onSave(finalData);
@@ -298,14 +359,23 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
                         </div>
                     </div>
 
-                    {/* Submit Button */}
+                    {/* Action Buttons */}
                     <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <button 
-                            type="submit" 
-                            className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
-                        >
-                            {isEditing ? 'Update and Resubmit' : 'Submit Form'}
-                        </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <button 
+                                type="button"
+                                onClick={handleSaveForLater}
+                                className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-yellow-600 hover:to-orange-600 transform hover:scale-105 transition-all duration-200 text-lg"
+                            >
+                                Save for Later
+                            </button>
+                            <button 
+                                type="submit" 
+                                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
+                            >
+                                Submit for Review
+                            </button>
+                        </div>
                     </div>
                 </form>
             </main>
