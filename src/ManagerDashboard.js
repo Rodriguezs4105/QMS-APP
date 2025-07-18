@@ -17,6 +17,7 @@ function ManagerDashboard({ onFormSelect, onSavedFormSelect }) {
         approvals: 0,
         rejections: 0
     });
+    const [rejectedForms, setRejectedForms] = useState([]);
 
     useEffect(() => {
         const q = query(
@@ -84,14 +85,54 @@ function ManagerDashboard({ onFormSelect, onSavedFormSelect }) {
         loadAuditStats();
     }, []);
 
+    // Load rejected forms for the current manager
+    useEffect(() => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+        const q = query(
+            collection(db, "completedForms"),
+            where("status", "==", "Rejected"),
+            where("submittedBy", "==", currentUser.email)
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const rejectedFormsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setRejectedForms(rejectedFormsData);
+        }, (error) => {
+            console.error("Error fetching rejected forms: ", error);
+        });
+        return () => unsubscribe();
+    }, []);
+
     return (
         <div>
-            <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-10">
+            <header className="bg-gradient-to-r from-orange-600 to-red-500 p-4 pt-6 shadow-lg sticky top-0 z-10">
                 <div className="flex justify-center items-center">
-                    <h1 className="text-2xl font-bold text-white">Manager Verification Hub</h1>
+                    <h1 className="text-2xl font-bold text-white">Manager Hub</h1>
                 </div>
             </header>
-            <main className="p-4 space-y-4">
+            <main className="p-4">
+                {rejectedForms.length > 0 && (
+                    <div className="mb-8">
+                        <h2 className="text-xl font-bold text-gray-800 mb-3">Rejected Forms (Action Required)</h2>
+                        <div className="bg-white rounded-2xl shadow-md">
+                            <ul className="divide-y divide-gray-200">
+                                {rejectedForms.map(form => (
+                                    <li key={form.id} onClick={() => onFormSelect(form)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50">
+                                        <div className="flex items-center">
+                                            <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-1.414 1.414M6.343 17.657l-1.415 1.415M5.636 5.636l1.415 1.414M17.657 17.657l1.414 1.415M12 8v4m0 4h.01" /></svg>
+                                            <div className="ml-3">
+                                                <p className="font-bold text-gray-800">{form.formTitle || form.recipeName}</p>
+                                                <p className="text-sm text-red-600">Rejected: {form.rejectionReason}</p>
+                                                <p className="text-xs text-gray-500">Click to edit and resubmit</p>
+                                            </div>
+                                        </div>
+                                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
                 {/* Audit Trail Statistics */}
                 <div className="bg-white rounded-2xl shadow-md p-6">
                     <h2 className="text-lg font-semibold text-gray-800 mb-4">Today's Activity</h2>

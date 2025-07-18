@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection } from './firebase';
+import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc, deleteDoc, updateDoc } from './firebase';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 
 const hummusRecipeData = {
     "Original Hummus": { baseIngredient: 'Chickpeas (Boiled)', ingredients: { 'Chickpeas (Boiled)': '193.62 kg', 'Ice': '47.60 kg', 'Tahini': '77.27 kg', 'Sugar': '4.40 kg', 'Salt': '4.40 kg', 'Garlic Flakes': '2.80 kg', 'White pepper': '0.64 kg', 'Citric acid': '2.80 kg', 'Sunflower Oil': '66.00 kg' } },
@@ -35,6 +37,7 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
     const [calculatedValues, setCalculatedValues] = useState(originalForm?.calculatedValues || {
         theoreticalYield: '',
     });
+    // No useState for savedFormId; always use originalForm?.id
 
     useEffect(() => {
         // Update lot number when date or batch number changes
@@ -83,25 +86,47 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
     const handleSaveForLater = async () => {
         const user = auth.currentUser;
         const recipe = hummusRecipeData[recipeName];
-        const savedData = {
-            ...formData,
-            recipeName,
-            ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
-                name,
-                code: ingredientCodes[name] || 'N/A',
-                amount,
-                lot: ingredientLots[name] || ''
-            })),
-            calculatedValues,
-            formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
-            formType: 'dynamicHummusDipsBatchSheet',
-            savedBy: user?.email || 'Unknown User',
-            savedAt: serverTimestamp(),
-            status: "Saved for Later"
-        };
-        
+        const savedData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                recipeName,
+                ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
+                    name,
+                    code: ingredientCodes[name] || 'N/A',
+                    amount,
+                    lot: ingredientLots[name] || ''
+                })),
+                calculatedValues,
+                formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
+                formType: 'dynamicHummusDipsBatchSheet',
+                date: formData.date
+            },
+            {
+                savedBy: user?.email || 'Unknown User',
+                status: "Saved for Later",
+                isSavedForm: true
+            }
+        );
         try {
-            await addDoc(collection(db, "savedForms"), savedData);
+            let docRef;
+            if (originalForm?.id) {
+                await updateDoc(doc(db, "savedForms", originalForm.id), savedData);
+                docRef = { id: originalForm.id };
+            } else {
+                docRef = await addDoc(collection(db, "savedForms"), savedData);
+            }
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_SAVED,
+                docRef.id,
+                'dynamicHummusDipsBatchSheet',
+                formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
+                {
+                    recipeName,
+                    batchNumber: formData.batchNumber,
+                    date: formData.date
+                }
+            );
             alert("Form saved for later! You can continue editing it from your dashboard.");
             onBack();
         } catch (error) {
@@ -114,32 +139,38 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
         e.preventDefault();
         const user = auth.currentUser;
         const recipe = hummusRecipeData[recipeName];
-        const finalData = {
-            ...formData,
-            recipeName,
-            ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
-                name,
-                code: ingredientCodes[name] || 'N/A',
-                amount,
-                lot: ingredientLots[name] || ''
-            })),
-            calculatedValues,
-            formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
-            submittedBy: user?.email || 'Unknown User',
-            submittedAt: serverTimestamp(),
-            status: 'Pending Review'
-        };
-        
+        const finalData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                recipeName,
+                ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
+                    name,
+                    code: ingredientCodes[name] || 'N/A',
+                    amount,
+                    lot: ingredientLots[name] || ''
+                })),
+                calculatedValues,
+                formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
+                date: formData.date
+            },
+            {
+                submittedBy: user?.email || 'Unknown User',
+                status: 'Pending Review',
+                isCompletedForm: true
+            }
+        );
         try {
             if (isEditing && onSave) {
-                // Update existing form
                 await onSave(finalData);
-            } else if (onSubmit) {
-                // Handle saved form submission
-                await onSubmit(finalData);
+                onBack();
+            } else if (onSubmit && originalForm?.id) {
+                await deleteDoc(doc(db, "savedForms", originalForm.id));
+                const newFormRef = doc(collection(db, "completedForms"));
+                await setDoc(newFormRef, finalData);
+                alert('Form submitted for review!');
+                onBack();
             } else {
-                // Create new form
-                const newFormRef = doc(collection(db, 'completedForms'));
+                const newFormRef = doc(collection(db, "completedForms"));
                 await setDoc(newFormRef, finalData);
                 alert('Form submitted for review!');
                 onBack();

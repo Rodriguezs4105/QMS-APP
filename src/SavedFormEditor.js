@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth, doc, updateDoc, deleteDoc, serverTimestamp } from './firebase';
 import FormRenderer from './FormRenderer';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
@@ -8,7 +10,6 @@ const DeleteIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentCol
 
 function SavedFormEditor({ savedForm, onBack }) {
     const [formTemplate, setFormTemplate] = useState(null);
-    const [currentFormData, setCurrentFormData] = useState(null);
 
     useEffect(() => {
         // Create a form template object from the saved form data
@@ -26,7 +27,6 @@ function SavedFormEditor({ savedForm, onBack }) {
                 ...updatedFormData,
                 savedAt: serverTimestamp()
             });
-            setCurrentFormData(updatedFormData);
             alert("Form updated and saved!");
         } catch (error) {
             console.error("Error updating saved form: ", error);
@@ -46,24 +46,38 @@ function SavedFormEditor({ savedForm, onBack }) {
         }
     };
 
-    const handleSubmit = async () => {
-        if (!currentFormData) {
-            alert("Please save your changes first before submitting.");
-            return;
-        }
-        
+    // Accepts the latest form data from the child form
+    const handleSubmit = async (latestFormData) => {
         try {
-            // Delete from saved forms
+            // Remove from saved forms
             await deleteDoc(doc(db, "savedForms", savedForm.id));
-            
+
             // Add to completed forms
             const { addDoc, collection } = await import('./firebase');
-            await addDoc(collection(db, "completedForms"), {
-                ...currentFormData,
-                status: "Pending Review",
-                submittedAt: serverTimestamp()
-            });
-            
+            const user = auth.currentUser;
+            const completedFormData = prepareFormDataForFirestore(
+                {
+                    ...latestFormData,
+                    formTitle: latestFormData.formTitle || savedForm.formTitle,
+                    formType: latestFormData.formType || savedForm.formType
+                },
+                {
+                    submittedBy: user?.email || 'Unknown User',
+                    status: "Pending Review",
+                    isCompletedForm: true
+                }
+            );
+            const docRef = await addDoc(collection(db, "completedForms"), completedFormData);
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_SUBMITTED,
+                docRef.id,
+                completedFormData.formType,
+                completedFormData.formTitle,
+                {
+                    ...completedFormData
+                }
+            );
             alert("Form submitted for review!");
             onBack();
         } catch (error) {

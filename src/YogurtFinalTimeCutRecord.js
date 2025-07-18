@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
@@ -83,7 +85,6 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
 
     const handleSaveForLater = async () => {
         const user = auth.currentUser;
-
         // Convert nested arrays to a flat structure for Firestore
         const flattenedPhMonitoringData = phMonitoringData.map((tank, tankIndex) => 
             tank.map((reading, readingIndex) => ({
@@ -93,20 +94,34 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
                 ph: reading.ph
             }))
         ).flat();
-
-        const savedData = {
-            ...formData,
-            finalCutData,
-            phMonitoringData: flattenedPhMonitoringData,
-            formTitle: "F-03: Yogurt Final Time and Cut Record",
-            formType: 'yogurtFinalTimeCut',
-            savedBy: user?.email || 'Unknown User',
-            savedAt: serverTimestamp(),
-            status: "Saved for Later"
-        };
-        
+        const savedData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                phMonitoringData: flattenedPhMonitoringData,
+                finalCutData,
+                formTitle: "F-03: Yogurt Final Time and Cut Record",
+                formType: 'yogurtFinalTimeCut'
+            },
+            {
+                savedBy: user?.email || 'Unknown User',
+                status: "Saved for Later",
+                isSavedForm: true
+            }
+        );
         try {
-            await addDoc(collection(db, "savedForms"), savedData);
+            const docRef = await addDoc(collection(db, "savedForms"), savedData);
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_SAVED,
+                docRef.id,
+                'yogurtFinalTimeCut',
+                "F-03: Yogurt Final Time and Cut Record",
+                {
+                    performedByCut: formData.performedByCut,
+                    performedByPh: formData.performedByPh,
+                    date: formData.date
+                }
+            );
             alert("Form saved for later! You can continue editing it from your dashboard.");
             onBack();
         } catch (error) {
@@ -118,8 +133,6 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
-
-        // Convert nested arrays to a flat structure for Firestore
         const flattenedPhMonitoringData = phMonitoringData.map((tank, tankIndex) => 
             tank.map((reading, readingIndex) => ({
                 tankIndex,
@@ -128,25 +141,24 @@ function YogurtFinalTimeCutRecord({ onBack, isEditing = false, onSave, originalF
                 ph: reading.ph
             }))
         ).flat();
-
-        const finalData = {
-            ...formData,
-            finalCutData,
-            phMonitoringData: flattenedPhMonitoringData,
-            formTitle: "F-03: Yogurt Final Time and Cut Record",
-            formType: 'yogurtFinalTimeCut',
-            submittedBy: user?.email || 'Unknown User',
-            submittedAt: serverTimestamp(),
-            status: "Pending Review"
-        };
-        
-        if (onSubmit) {
-            await onSubmit(finalData);
-            return;
-        }
+        const finalData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                phMonitoringData: flattenedPhMonitoringData,
+                formTitle: "F-03: Yogurt Final Time and Cut Record",
+                formType: 'yogurtFinalTimeCut'
+            },
+            {
+                submittedBy: user?.email || 'Unknown User',
+                status: "Pending Review",
+                isCompletedForm: true
+            }
+        );
         try {
             if (isEditing && onSave) {
                 await onSave(finalData);
+            } else if (onSubmit) {
+                await onSubmit(finalData);
             } else {
                 const newFormRef = doc(collection(db, "completedForms"));
                 await setDoc(newFormRef, finalData);

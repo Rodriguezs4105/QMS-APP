@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
 import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 import PhotoAttachment from './components/PhotoAttachment';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
@@ -158,23 +159,24 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
 
     const handleSaveForLater = async () => {
         const user = auth.currentUser;
-
-        const savedData = {
-            ...formData,
-            recipeName,
-            ingredients,
-            calculatedValues,
-            photos,
-            formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet",
-            formType: formTemplate?.formType || 'batchSheet',
-            savedBy: user?.email || 'Unknown User',
-            savedAt: serverTimestamp(),
-            status: "Saved for Later"
-        };
-        
+        const savedData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                recipeName,
+                ingredients,
+                calculatedValues,
+                photos,
+                formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet",
+                formType: formTemplate?.formType || 'batchSheet'
+            },
+            {
+                savedBy: user?.email || 'Unknown User',
+                status: "Saved for Later",
+                isSavedForm: true
+            }
+        );
         try {
             const docRef = await addDoc(collection(db, "savedForms"), savedData);
-            
             // Log audit trail
             await logAuditTrail(
                 AUDIT_ACTIONS.FORM_SAVED,
@@ -187,7 +189,6 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                     batchDate: formData.batchDate
                 }
             );
-            
             alert("Form saved for later! You can continue editing it from your dashboard.");
             onBack();
         } catch (error) {
@@ -199,25 +200,38 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
-
-        const finalData = {
-            ...formData,
-            recipeName,
-            ingredients,
-            calculatedValues,
-            photos,
-            formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet",
-            submittedBy: user?.email || 'Unknown User',
-            submittedAt: serverTimestamp(),
-            status: "Pending Review"
-        };
-        
+        const finalData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                recipeName,
+                ingredients,
+                calculatedValues,
+                photos,
+                formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet"
+            },
+            {
+                submittedBy: user?.email || 'Unknown User',
+                status: "Pending Review",
+                isCompletedForm: true
+            }
+        );
         try {
-            if (isEditing && onSave) {
-                // Update existing form
+            if (isEditing && onSubmit) {
+                await onSubmit(finalData);
+                await logAuditTrail(
+                    AUDIT_ACTIONS.FORM_SUBMITTED,
+                    originalForm?.id || 'unknown',
+                    'batchSheet',
+                    "F-06: Dynamic Yogurt Batch Sheet",
+                    {
+                        recipeName,
+                        batchNumber: formData.batchNumber,
+                        batchDate: formData.batchDate,
+                        action: 'Submitted from saved form'
+                    }
+                );
+            } else if (isEditing && onSave) {
                 await onSave(finalData);
-                
-                // Log audit trail for form update
                 await logAuditTrail(
                     AUDIT_ACTIONS.FORM_EDITED,
                     originalForm?.id || 'unknown',
@@ -231,10 +245,7 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                     }
                 );
             } else if (onSubmit) {
-                // Handle saved form submission
                 await onSubmit(finalData);
-                
-                // Log audit trail for saved form submission
                 await logAuditTrail(
                     AUDIT_ACTIONS.FORM_SUBMITTED,
                     originalForm?.id || 'unknown',
@@ -248,11 +259,8 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                     }
                 );
             } else {
-                // Create new form
                 const newFormRef = doc(collection(db, "completedForms"));
                 await setDoc(newFormRef, finalData);
-                
-                // Log audit trail for new form submission
                 await logAuditTrail(
                     AUDIT_ACTIONS.FORM_SUBMITTED,
                     newFormRef.id,
@@ -265,7 +273,6 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
                         action: 'New form submitted'
                     }
                 );
-                
                 alert("Form submitted for review!");
                 onBack();
             }

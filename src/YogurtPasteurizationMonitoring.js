@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 
 // --- ICONS ---
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
@@ -85,20 +87,34 @@ function YogurtPasteurizationMonitoring({ onBack, isEditing = false, onSave, ori
 
     const handleSaveForLater = async () => {
         const user = auth.currentUser;
-
-        const savedData = {
-            ...formData,
-            mixingTanksData,
-            fermentationTanksData,
-            formTitle: "F-04: Yogurt Pasteurization to Fermentation Monitoring Record",
-            formType: 'yogurtPasteurizationMonitoring',
-            savedBy: user?.email || 'Unknown User',
-            savedAt: serverTimestamp(),
-            status: "Saved for Later"
-        };
-        
+        const savedData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                mixingTanksData,
+                fermentationTanksData,
+                formTitle: "F-04: Yogurt Pasteurization to Fermentation Monitoring Record",
+                formType: 'yogurtPasteurizationMonitoring'
+            },
+            {
+                savedBy: user?.email || 'Unknown User',
+                status: "Saved for Later",
+                isSavedForm: true
+            }
+        );
         try {
-            await addDoc(collection(db, "savedForms"), savedData);
+            const docRef = await addDoc(collection(db, "savedForms"), savedData);
+            // Log audit trail
+            await logAuditTrail(
+                AUDIT_ACTIONS.FORM_SAVED,
+                docRef.id,
+                'yogurtPasteurizationMonitoring',
+                "F-04: Yogurt Pasteurization to Fermentation Monitoring Record",
+                {
+                    performedByMixing: formData.performedByMixing,
+                    performedByPasteurization: formData.performedByPasteurization,
+                    date: formData.date
+                }
+            );
             alert("Form saved for later! You can continue editing it from your dashboard.");
             onBack();
         } catch (error) {
@@ -110,23 +126,24 @@ function YogurtPasteurizationMonitoring({ onBack, isEditing = false, onSave, ori
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
-
-        const finalData = {
-            ...formData,
-            mixingTanksData,
-            fermentationTanksData,
-            formTitle: "F-04: Yogurt Pasteurization to Fermentation Monitoring Record",
-            formType: 'yogurtPasteurizationMonitoring',
-            submittedBy: user?.email || 'Unknown User',
-            submittedAt: serverTimestamp(),
-            status: "Pending Review"
-        };
-        
+        const finalData = prepareFormDataForFirestore(
+            {
+                ...formData,
+                mixingTanksData,
+                fermentationTanksData,
+                formTitle: "F-04: Yogurt Pasteurization to Fermentation Monitoring Record",
+                formType: 'yogurtPasteurizationMonitoring'
+            },
+            {
+                submittedBy: user?.email || 'Unknown User',
+                status: "Pending Review",
+                isCompletedForm: true
+            }
+        );
         try {
             if (isEditing && onSave) {
                 await onSave(finalData);
             } else if (onSubmit) {
-                // Handle saved form submission
                 await onSubmit(finalData);
             } else {
                 const newFormRef = doc(collection(db, "completedForms"));

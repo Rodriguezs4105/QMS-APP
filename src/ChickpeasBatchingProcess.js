@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 
 const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 
@@ -57,17 +59,33 @@ function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onS
 
   const handleSaveForLater = async () => {
     const user = auth.currentUser;
-    const savedData = {
-      ...formData,
-      formTitle: formTemplate?.title || 'F-10: Chickpeas Batching Process',
-      formType: 'chickpeasBatchingProcess',
-      savedBy: user?.email || 'Unknown User',
-      savedAt: serverTimestamp(),
-      status: "Saved for Later"
-    };
+    const savedData = prepareFormDataForFirestore(
+      {
+        ...formData,
+        formTitle: formTemplate?.title || 'F-10: Chickpeas Batching Process',
+        formType: 'chickpeasBatchingProcess'
+      },
+      {
+        savedBy: user?.email || 'Unknown User',
+        status: "Saved for Later",
+        isSavedForm: true
+      }
+    );
     
     try {
-      await addDoc(collection(db, "savedForms"), savedData);
+      const docRef = await addDoc(collection(db, "savedForms"), savedData);
+      // Log audit trail
+      await logAuditTrail(
+        AUDIT_ACTIONS.FORM_SAVED,
+        docRef.id,
+        'chickpeasBatchingProcess',
+        formTemplate?.title || 'F-10: Chickpeas Batching Process',
+        {
+          batch_name: formData.batch_name,
+          batched_by: formData.batched_by,
+          date: formData.date
+        }
+      );
       alert("Form saved for later! You can continue editing it from your dashboard.");
       onBack();
     } catch (error) {
@@ -79,13 +97,18 @@ function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onS
   const handleSubmit = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
-    const finalData = {
-      ...formData,
-      formTitle: formTemplate?.title || 'F-10: Chickpeas Batching Process',
-      submittedBy: user?.email || 'Unknown User',
-      submittedAt: serverTimestamp(),
-      status: 'Pending Review'
-    };
+    const finalData = prepareFormDataForFirestore(
+      {
+        ...formData,
+        formTitle: formTemplate?.title || 'F-10: Chickpeas Batching Process',
+        formType: 'chickpeasBatchingProcess'
+      },
+      {
+        submittedBy: user?.email || 'Unknown User',
+        status: 'Pending Review',
+        isCompletedForm: true
+      }
+    );
     
     try {
       if (isEditing && onSave) {
