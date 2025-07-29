@@ -1,11 +1,44 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
-import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
+import React, { useState, useEffect } from 'react';
+import { db, doc, setDoc } from './firebase';
 import PhotoAttachment from './components/PhotoAttachment';
 import { prepareFormDataForFirestore } from './utils/formSubmission';
 
-// --- ICONS ---
-const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
+// Material UI imports
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Container,
+  Divider,
+  Alert,
+  Snackbar,
+  Avatar,
+} from '@mui/material';
+import {
+  ArrowBack as ArrowBackIcon,
+  Save as SaveIcon,
+  Send as SendIcon,
+  Assignment as AssignmentIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
 
 // --- FORM DATA AND LOGIC ---
 const recipeData = {
@@ -16,9 +49,9 @@ const recipeData = {
     "Sprouts 5%": { baseIngredient: 'Whole Milk', shelfLife: 75, ratios: { 'NFDM': 0.026, 'Polartex 06748': 0.0135, 'Colflo': 0.0026, 'MPC 85': 0.019, 'Whey Protein': 0.0073, 'Lactonat EN': 0.0096, 'Culture AGAR': 0.001, 'Cream 40%': 0.0644 }, special: { 'YoFlex (Mild 2.0)': '500U (Units)', 'Q9 (FreshQ®)': '500U (Units)' } },
     "Dairy Free": { baseIngredient: 'Coconut Cream', shelfLife: 150, ratios: { 'Agar': 0.0033, 'Maple syrup': 0.05, 'Lyofast SYAB 1': 0, 'Culture CA': 0.003, 'Culture SA': 0.0005, 'Culture SM': 0.0033 }, special: {} }
 };
+
 const ingredientCodes = { 'Whole Milk': '6012', 'Low Fat Milk': '6012', 'Cream 40%': '6011', 'Precisa Cream': '6014', 'NFDM': '6004', 'MPC 85': '6002', 'Whey Protein': '6001', 'Lactonat EN': '6003', 'Culture AGAR': '6033', 'Q9 (FreshQ®)': '6024', 'Culture Trans': '6033', 'Trans Culture': '6033' };
 
-// Improved mapping for bag sizes with all possible variations
 const bagSizes = {
     'NFDM': 22.7,
     'MPC85': 20,
@@ -37,7 +70,6 @@ const bagSizes = {
     'LACTONAT EN': 25
 };
 
-// --- COMPONENT ---
 function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalForm, onSubmit }) {
     const [recipeName, setRecipeName] = useState(originalForm?.recipeName || '');
     const [formData, setFormData] = useState({
@@ -59,6 +91,7 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
     });
     const [photos, setPhotos] = useState(originalForm?.photos || {});
     const [formId] = useState(() => originalForm?.id || `temp_${Date.now()}`);
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
     const handleRecipeChange = (name) => {
         const recipe = recipeData[name];
@@ -71,566 +104,560 @@ function BatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalF
         const allIngredients = Object.entries({ ...recipe.ratios, ...recipe.special }).map(([ingName, value]) => ({
             name: ingName,
             code: ingredientCodes[ingName] || 'N/A',
-            isRatio: typeof value === 'number',
-            targetAmount: typeof value === 'number' ? 0 : value,
-            actualUse: '',
-            lot: ''
+            ratio: value,
+            calculatedAmount: '',
+            actualAmount: '',
+            bagSize: bagSizes[ingName.toUpperCase()] || 25,
+            bagsUsed: '',
+            lotNumber: '',
+            notes: ''
         }));
+
         setIngredients(allIngredients);
-        setFormData(prev => ({ // Reset form data but keep recipe name
+        setCalculatedValues(prev => ({
             ...prev,
-            baseIngredientAmount: '',
-            batchNumber: '',
-        })); 
+            shelfLife: recipe.shelfLife
+        }));
     };
 
+    // Auto-calculate ingredients when base amount changes
     useEffect(() => {
-        if (!recipeName) return;
+        if (!recipeName || !formData.baseIngredientAmount) return;
+        
         const recipe = recipeData[recipeName];
-        const baseAmount = parseFloat(formData.baseIngredientAmount) || 0;
-        let totalYield = baseAmount;
+        if (!recipe) return;
 
-        const updatedIngredients = ingredients.map(ing => {
-            if (ing.isRatio) {
-                const calculatedAmount = baseAmount * (recipe.ratios[ing.name] || 0);
-                totalYield += calculatedAmount;
-                return { ...ing, targetAmount: calculatedAmount.toFixed(2) };
+        const baseAmount = parseFloat(formData.baseIngredientAmount) || 0;
+        
+        const updatedIngredients = ingredients.map(ingredient => {
+            const ratio = recipe.ratios[ingredient.name];
+            if (ratio && typeof ratio === 'number') {
+                const calculatedAmount = (baseAmount * ratio).toFixed(2);
+                return { ...ingredient, calculatedAmount };
             }
-            return ing;
+            return ingredient;
         });
 
         setIngredients(updatedIngredients);
+
+        // Calculate theoretical yield
+        const totalYield = baseAmount + updatedIngredients.reduce((sum, ing) => {
+            return sum + (parseFloat(ing.calculatedAmount) || 0);
+        }, 0);
+
         setCalculatedValues(prev => ({
             ...prev,
-            theoreticalYield: totalYield > 0 ? totalYield.toFixed(2) + ' kg' : ''
+            theoreticalYield: totalYield.toFixed(2)
         }));
-    }, [formData.baseIngredientAmount, recipeName]);
-
-    useEffect(() => {
-        const { batchDate, batchNumber } = formData;
-        const recipe = recipeData[recipeName];
-        let newLot = '';
-        let newExpiry = '';
-        let newShelfLife = '';
-
-        if (batchDate && recipe) {
-            const date = new Date(batchDate + 'T00:00:00');
-            newShelfLife = `${recipe.shelfLife} days`;
-            date.setDate(date.getDate() + recipe.shelfLife);
-            newExpiry = date.toISOString().split('T')[0];
-        }
-
-        if (batchDate && batchNumber) {
-            const date = new Date(batchDate + 'T00:00:00');
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const day = date.getDate().toString().padStart(2, '0');
-            const year = date.getFullYear().toString().slice(-2);
-            const batch = batchNumber.toString().padStart(2, '0');
-            newLot = `${batch}${month}${day}${year}`;
-        }
-        
-        setCalculatedValues(prev => ({
-            ...prev,
-            lotNumber: newLot,
-            expiryDate: newExpiry,
-            shelfLife: newShelfLife
-        }));
-
-    }, [formData.batchDate, formData.batchNumber, recipeName]);
-
+    }, [recipeName, formData.baseIngredientAmount, ingredients.length]);
 
     const handleInputChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        if (type === 'checkbox') {
-            setFormData(prev => {
-                const newValues = checked ? [...prev[name], value] : prev[name].filter(v => v !== value);
-                return { ...prev, [name]: newValues };
-            });
-        } else {
-            setFormData(prev => ({ ...prev, [name]: value }));
-        }
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
     };
 
     const handleIngredientChange = (index, field, value) => {
-        const newIngredients = [...ingredients];
-        newIngredients[index][field] = value;
-        setIngredients(newIngredients);
+        const updatedIngredients = [...ingredients];
+        updatedIngredients[index] = { ...updatedIngredients[index], [field]: value };
+        setIngredients(updatedIngredients);
     };
 
     const handleSaveForLater = async () => {
-        const user = auth.currentUser;
-        const savedData = prepareFormDataForFirestore(
-            {
-                ...formData,
+        try {
+            const formDataToSave = {
+                id: formId,
+                formTitle: "F-06: Dynamic Yogurt Batch Sheet",
                 recipeName,
+                ...formData,
                 ingredients,
                 calculatedValues,
                 photos,
-                formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet",
-                formType: formTemplate?.formType || 'batchSheet'
-            },
-            {
-                savedBy: user?.email || 'Unknown User',
                 status: "Saved for Later",
-                isSavedForm: true
-            }
-        );
-        try {
-            const docRef = await addDoc(collection(db, "savedForms"), savedData);
-            // Log audit trail
-            await logAuditTrail(
-                AUDIT_ACTIONS.FORM_SAVED,
-                docRef.id,
-                'batchSheet',
-                "F-06: Dynamic Yogurt Batch Sheet",
-                {
-                    recipeName,
-                    batchNumber: formData.batchNumber,
-                    batchDate: formData.batchDate
-                }
-            );
-            alert("Form saved for later! You can continue editing it from your dashboard.");
-            onBack();
+                savedAt: new Date(),
+                savedBy: "currentUser@example.com" // Replace with actual user
+            };
+
+            await setDoc(doc(db, "savedForms", formId), formDataToSave);
+            setSnackbar({ open: true, message: "Form saved successfully!", severity: 'success' });
         } catch (error) {
-            console.error("Error saving form: ", error);
-            alert("Error saving form. See console for details.");
+            console.error("Error saving form:", error);
+            setSnackbar({ open: true, message: "Failed to save form.", severity: 'error' });
         }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const user = auth.currentUser;
-        const finalData = prepareFormDataForFirestore(
-            {
-                ...formData,
+        try {
+            const formDataToSubmit = prepareFormDataForFirestore({
+                formTitle: "F-06: Dynamic Yogurt Batch Sheet",
                 recipeName,
+                ...formData,
                 ingredients,
                 calculatedValues,
-                photos,
-                formTitle: formTemplate?.title || "F-06: Dynamic Yogurt Batch Sheet"
-            },
-            {
-                submittedBy: user?.email || 'Unknown User',
-                status: "Pending Review",
-                isCompletedForm: true
-            }
-        );
-        try {
-            if (isEditing && onSubmit) {
-                await onSubmit(finalData);
-                await logAuditTrail(
-                    AUDIT_ACTIONS.FORM_SUBMITTED,
-                    originalForm?.id || 'unknown',
-                    'batchSheet',
-                    "F-06: Dynamic Yogurt Batch Sheet",
-                    {
-                        recipeName,
-                        batchNumber: formData.batchNumber,
-                        batchDate: formData.batchDate,
-                        action: 'Submitted from saved form'
-                    }
-                );
-            } else if (isEditing && onSave) {
-                await onSave(finalData);
-                await logAuditTrail(
-                    AUDIT_ACTIONS.FORM_EDITED,
-                    originalForm?.id || 'unknown',
-                    'batchSheet',
-                    "F-06: Dynamic Yogurt Batch Sheet",
-                    {
-                        recipeName,
-                        batchNumber: formData.batchNumber,
-                        batchDate: formData.batchDate,
-                        action: 'Updated and resubmitted'
-                    }
-                );
-            } else if (onSubmit) {
-                await onSubmit(finalData);
-                await logAuditTrail(
-                    AUDIT_ACTIONS.FORM_SUBMITTED,
-                    originalForm?.id || 'unknown',
-                    'batchSheet',
-                    "F-06: Dynamic Yogurt Batch Sheet",
-                    {
-                        recipeName,
-                        batchNumber: formData.batchNumber,
-                        batchDate: formData.batchDate,
-                        action: 'Submitted from saved form'
-                    }
-                );
-            } else {
-                const newFormRef = doc(collection(db, "completedForms"));
-                await setDoc(newFormRef, finalData);
-                await logAuditTrail(
-                    AUDIT_ACTIONS.FORM_SUBMITTED,
-                    newFormRef.id,
-                    'batchSheet',
-                    "F-06: Dynamic Yogurt Batch Sheet",
-                    {
-                        recipeName,
-                        batchNumber: formData.batchNumber,
-                        batchDate: formData.batchDate,
-                        action: 'New form submitted'
-                    }
-                );
-                alert("Form submitted for review!");
-                onBack();
-            }
+                photos
+            });
+
+            await setDoc(doc(db, "completedForms", formId), formDataToSubmit);
+            setSnackbar({ open: true, message: "Form submitted successfully!", severity: 'success' });
+            if (onSubmit) onSubmit();
         } catch (error) {
-            console.error("Error submitting form: ", error);
-            alert("Error submitting form. See console for details.");
+            console.error("Error submitting form:", error);
+            setSnackbar({ open: true, message: "Failed to submit form.", severity: 'error' });
         }
     };
 
+    const handleCloseSnackbar = () => {
+        setSnackbar({ ...snackbar, open: false });
+    };
+
     return (
-        <div>
-            <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-20">
-                <div className="flex justify-between items-center">
-                    <button onClick={onBack} className="text-white p-2 -ml-2"><BackIcon /></button>
-                    <h1 className="text-xl font-bold text-white truncate">F-06: Dynamic Yogurt Batch Sheet</h1>
-                    <div className="w-6"></div>
-                </div>
-            </header>
-            
-            <main className="p-4">
-                <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
+        <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)' }}>
+            <AppBar 
+                position="sticky" 
+                elevation={0}
+                sx={{ 
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(20px)',
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                }}
+            >
+                <Toolbar sx={{ justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <IconButton 
+                            onClick={onBack}
+                            sx={{ 
+                                color: 'text.secondary',
+                                '&:hover': {
+                                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                                }
+                            }}
+                        >
+                            <ArrowBackIcon />
+                        </IconButton>
+                        <Avatar 
+                            sx={{ 
+                                bgcolor: 'primary.main',
+                                width: 40,
+                                height: 40,
+                                fontSize: '1.2rem',
+                                fontWeight: 600,
+                            }}
+                        >
+                            <AssignmentIcon />
+                        </Avatar>
+                        <Box>
+                            <Typography variant="h6" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                F-06: Dynamic Yogurt Batch Sheet
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                {isEditing ? 'Editing form' : 'Create new batch sheet'}
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            variant="outlined"
+                            startIcon={<SaveIcon />}
+                            onClick={handleSaveForLater}
+                            sx={{
+                                borderRadius: 3,
+                                px: 3,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Save
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={<SendIcon />}
+                            onClick={handleSubmit}
+                            sx={{
+                                borderRadius: 3,
+                                px: 3,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Submit
+                        </Button>
+                    </Box>
+                </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="lg" sx={{ py: 3 }}>
+                <Grid container spacing={3}>
                     {/* Recipe Selection */}
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
-                            <label htmlFor="recipe-select" className="block text-lg font-semibold text-gray-700 mb-3">Select Recipe</label>
-                            <select 
-                                id="recipe-select" 
-                                value={recipeName} 
-                                onChange={(e) => handleRecipeChange(e.target.value)} 
-                                className="w-full bg-white border-2 border-blue-300 rounded-lg px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                required
-                            >
-                                <option value="">-- Choose a Recipe --</option>
-                                {Object.keys(recipeData).map(name => <option key={name} value={name}>{name}</option>)}
-                            </select>
-                        </div>
-                        </div>
-
-                        {recipeName && (
-                        <div className="space-y-6">
-                            {/* Recipe Information */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Recipe Information</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Batch Date</label>
-                                            <input 
-                                                type="date" 
-                                                name="batchDate" 
-                                                value={formData.batchDate} 
-                                                onChange={handleInputChange} 
-                                                className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                                required
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Batch By (Initials)</label>
-                                            <input 
-                                                type="text" 
-                                                name="batchBy" 
-                                                value={formData.batchBy} 
-                                                onChange={handleInputChange} 
-                                                placeholder="Enter initials" 
-                                                className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                                required
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Batch Number</label>
-                                            <input 
-                                                type="number" 
-                                                name="batchNumber" 
-                                                value={formData.batchNumber} 
-                                                onChange={handleInputChange} 
-                                                placeholder="e.g., 1" 
-                                                className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                                required
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Recipe</label>
-                                            <div className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium">
-                                                {recipeName}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Calculated Values */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Calculated Values</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Shelf Life</label>
-                                            <input 
-                                                type="text" 
-                                                value={calculatedValues.shelfLife} 
-                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
-                                                readOnly
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Expiry Date</label>
-                                            <input 
-                                                type="text" 
-                                                value={calculatedValues.expiryDate} 
-                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
-                                                readOnly
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Lot Number</label>
-                                            <input 
-                                                type="text" 
-                                                value={calculatedValues.lotNumber} 
-                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
-                                                readOnly
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="block text-sm font-medium text-gray-600">Theoretical Yield</label>
-                                            <input 
-                                                type="text" 
-                                                value={calculatedValues.theoreticalYield} 
-                                                className="w-full bg-gray-100 border-2 border-gray-300 rounded-lg px-3 py-2 text-gray-700 font-medium" 
-                                                readOnly
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Mixing Tank Selection */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Mixing Tank Selection</h3>
-                                    <div className="flex flex-wrap gap-6">
-                                        {[1, 2].map(tank => (
-                                            <label key={tank} className="flex items-center space-x-3 cursor-pointer">
-                                                <input 
-                                                    type="checkbox" 
-                                                    name="mixingTank" 
-                                                    value={tank} 
-                                                    checked={formData.mixingTank.includes(tank.toString())}
-                                                    onChange={handleInputChange} 
-                                                    className="w-5 h-5 text-blue-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-200"
-                                                />
-                                                <span className="text-lg font-medium text-gray-700">Tank {tank}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                                </div>
-
-                            {/* Base Ingredient */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Base Ingredient</h3>
-                                    <div className="space-y-2">
-                                        <label htmlFor="base-ingredient-amount" className="block text-sm font-medium text-gray-600">
-                                            {recipeData[recipeName]?.baseIngredient} Amount (kg)
-                                        </label>
-                                        <input 
-                                            type="number" 
-                                            step="any" 
-                                            name="baseIngredientAmount" 
-                                            value={formData.baseIngredientAmount} 
-                                            onChange={handleInputChange} 
-                                            className="w-full bg-white border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-colors" 
-                                            required
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Ingredients Table */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <div className="bg-white p-4 rounded-lg border border-gray-200">
-                                    <h3 className="text-lg font-semibold mb-4 text-gray-700">Ingredients</h3>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm border-collapse">
-                                            <thead className="bg-gray-100">
-                                                <tr>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Code</th>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Ingredient</th>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Target Amount</th>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Actual Use (Bags)</th>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Partial KGs</th>
-                                                    <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Lot #</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {ingredients.map((ing, index) => {
-                                                // Normalize ingredient name for matching
-                                                const normName = ing.name.replace(/\s+/g, '').toUpperCase();
-                                                const bagKey = Object.keys(bagSizes).find(key => normName.includes(key.replace(/\s+/g, '').toUpperCase()));
-                                                let bags = '';
-                                                let partial = '';
-                                                let target = parseFloat(ing.targetAmount);
-                                                if (bagKey && !isNaN(target)) {
-                                                    const kgPerBag = bagSizes[bagKey];
-                                                    bags = Math.floor(target / kgPerBag);
-                                                    partial = (target - bags * kgPerBag).toFixed(2);
-                                                }
-                                                return (
-                                                    <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
-                                                        <td className="p-3 border border-gray-300 bg-gray-50 font-medium">{ing.code}</td>
-                                                        <td className="p-3 border border-gray-300 font-medium">{ing.name}</td>
-                                                        <td className="p-3 border border-gray-300">
-                                                            <input 
-                                                                type="text" 
-                                                                value={`${ing.targetAmount} ${ing.isRatio ? 'kg' : ''}`} 
-                                                                className="w-full bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-700 font-medium" 
-                                                                readOnly 
-                                                            />
-                                                        </td>
-                                                        <td className="p-3 border border-gray-300">
-                                                            <input 
-                                                                type="text" 
-                                                                value={bagKey ? bags : ing.actualUse} 
-                                                                onChange={(e) => handleIngredientChange(index, 'actualUse', e.target.value)} 
-                                                                className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                                                required 
-                                                            />
-                                                        </td>
-                                                        <td className="p-3 border border-gray-300">
-                                                            <input 
-                                                                type="text" 
-                                                                value={bagKey ? partial : ''} 
-                                                                onChange={(e) => handleIngredientChange(index, 'partialKgs', e.target.value)} 
-                                                                className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                                                readOnly={!!bagKey} 
-                                                            />
-                                                        </td>
-                                                        <td className="p-3 border border-gray-300">
-                                                            <input 
-                                                                type="text" 
-                                                                value={ing.lot} 
-                                                                onChange={(e) => handleIngredientChange(index, 'lot', e.target.value)} 
-                                                                className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                                                required 
-                                                            />
-                                                        </td>
-                                                </tr>
-                                            );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                    </div>
-                                </div>
-                                </div>
-
-                                {/* Transfer and Yield */}
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                {/* Transfer Tanks */}
-                                <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                    <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                                        <h3 className="text-lg font-semibold mb-4 text-gray-700">Batch Transfer</h3>
-                                        <p className="text-sm text-gray-600 mb-3">Select tanks to transfer batch to:</p>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {['FT1', 'FT2', 'FT3', 'FT4', 'FT5'].map(tank => (
-                                                <label key={tank} className="flex items-center space-x-3 cursor-pointer">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        name="transferTo" 
-                                                        value={tank} 
-                                                        checked={formData.transferTo.includes(tank)}
-                                                        onChange={handleInputChange} 
-                                                        className="w-4 h-4 text-orange-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-orange-200"
-                                                    />
-                                                    <span className="text-sm font-medium text-gray-700">{tank}</span>
-                                                </label>
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <AssignmentIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Recipe Selection
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Choose the yogurt recipe for this batch
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <FormControl fullWidth>
+                                        <InputLabel>Select Recipe</InputLabel>
+                                        <Select
+                                            value={recipeName}
+                                            onChange={(e) => handleRecipeChange(e.target.value)}
+                                            label="Select Recipe"
+                                        >
+                                            {Object.keys(recipeData).map((recipe) => (
+                                                <MenuItem key={recipe} value={recipe}>
+                                                    {recipe}
+                                                </MenuItem>
                                             ))}
-                                        </div>
-                                    </div>
-                                </div>
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
 
-                                {/* Batch Yield */}
-                                <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                    <div className="bg-teal-50 p-4 rounded-lg border border-teal-200">
-                                        <h3 className="text-lg font-semibold mb-4 text-gray-700">Batch Yield</h3>
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <label className="block text-sm font-medium text-gray-600">Batch Yield</label>
-                                                <input 
-                                                    type="text" 
-                                                    name="batchYield" 
-                                                    value={formData.batchYield} 
-                                                    onChange={handleInputChange} 
-                                                    placeholder="Enter batch yield" 
-                                                    className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-colors"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="block text-sm font-medium text-gray-600">Performed by (Initials)</label>
-                                                <input 
-                                                    type="text" 
-                                                    name="yieldPerformedBy" 
-                                                    value={formData.yieldPerformedBy} 
-                                                    onChange={handleInputChange} 
-                                                    placeholder="Enter initials" 
-                                                    className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 transition-colors"
-                                                />
-                                            </div>
-                                            
-                                            {/* Photo Attachment for Batch Yield */}
-                                            <PhotoAttachment
-                                                formId={formId}
-                                                fieldName="batchYield"
-                                                label="Batch Yield Documentation"
-                                                description="Take photos of the batch yield measurement, scale readings, or finished product"
-                                                existingPhotos={photos.batchYield || []}
-                                                onPhotoUploaded={(photoData, newPhotos) => {
-                                                    setPhotos(prev => ({
-                                                        ...prev,
-                                                        batchYield: newPhotos
-                                                    }));
-                                                }}
-                                                onPhotoDeleted={(photoData, newPhotos) => {
-                                                    setPhotos(prev => ({
-                                                        ...prev,
-                                                        batchYield: newPhotos
-                                                    }));
-                                                }}
-                                                maxPhotos={3}
+                    {/* Basic Information */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'secondary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Basic Information
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Enter batch details and specifications
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Batch Date"
+                                                name="batchDate"
+                                                type="date"
+                                                value={formData.batchDate}
+                                                onChange={handleInputChange}
+                                                InputLabelProps={{ shrink: true }}
                                             />
-                                        </div>
-                                    </div>
-                                </div>
-                                </div>
-                                
-                            {/* Action Buttons */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <button 
-                                        type="button"
-                                        onClick={handleSaveForLater}
-                                        className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-yellow-600 hover:to-orange-600 transform hover:scale-105 transition-all duration-200 text-lg"
-                                    >
-                                        Save for Later
-                                    </button>
-                                    <button 
-                                        type="submit" 
-                                        className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
-                                    >
-                                        {isEditing && onSubmit ? 'Submit for Review' : isEditing ? 'Update and Resubmit' : 'Submit Batch Sheet'}
-                                    </button>
-                                </div>
-                            </div>
-                            </div>
-                        )}
-                </form>
-            </main>
-        </div>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Batch Number"
+                                                name="batchNumber"
+                                                value={formData.batchNumber}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Batch By"
+                                                name="batchBy"
+                                                value={formData.batchBy}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Base Ingredient Amount"
+                                                name="baseIngredientAmount"
+                                                value={formData.baseIngredientAmount}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Ingredients Table */}
+                    {ingredients.length > 0 && (
+                        <Grid item xs={12}>
+                            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                                <CardContent sx={{ p: 0 }}>
+                                    <Box sx={{ p: 3, pb: 2 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                            <Box
+                                                sx={{
+                                                    width: 40,
+                                                    height: 40,
+                                                    borderRadius: '50%',
+                                                    bgcolor: 'success.main',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                            </Box>
+                                            <Box>
+                                                <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                    Ingredients
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    {ingredients.length} ingredient{ingredients.length !== 1 ? 's' : ''} for this recipe
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ p: 3 }}>
+                                        <TableContainer component={Paper} sx={{ borderRadius: 3, overflow: 'hidden' }}>
+                                            <Table>
+                                                <TableHead>
+                                                    <TableRow sx={{ bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Ingredient</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Ratio</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Calculated Amount</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Actual Amount</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Bags Used</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Lot Number</TableCell>
+                                                    </TableRow>
+                                                </TableHead>
+                                                <TableBody>
+                                                    {ingredients.map((ingredient, index) => (
+                                                        <TableRow key={index} hover>
+                                                            <TableCell>{ingredient.name}</TableCell>
+                                                            <TableCell>{ingredient.code}</TableCell>
+                                                            <TableCell>{ingredient.ratio}</TableCell>
+                                                            <TableCell>
+                                                                <TextField
+                                                                    size="small"
+                                                                    value={ingredient.calculatedAmount}
+                                                                    onChange={(e) => handleIngredientChange(index, 'calculatedAmount', e.target.value)}
+                                                                    sx={{ minWidth: 100 }}
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <TextField
+                                                                    size="small"
+                                                                    value={ingredient.actualAmount}
+                                                                    onChange={(e) => handleIngredientChange(index, 'actualAmount', e.target.value)}
+                                                                    sx={{ minWidth: 100 }}
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <TextField
+                                                                    size="small"
+                                                                    value={ingredient.bagsUsed}
+                                                                    onChange={(e) => handleIngredientChange(index, 'bagsUsed', e.target.value)}
+                                                                    sx={{ minWidth: 80 }}
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <TextField
+                                                                    size="small"
+                                                                    value={ingredient.lotNumber}
+                                                                    onChange={(e) => handleIngredientChange(index, 'lotNumber', e.target.value)}
+                                                                    sx={{ minWidth: 120 }}
+                                                                />
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </TableContainer>
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                    )}
+
+                    {/* Additional Information */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'info.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Additional Information
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Complete batch details and yield information
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Batch Yield"
+                                                name="batchYield"
+                                                value={formData.batchYield}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Yield Performed By"
+                                                name="yieldPerformedBy"
+                                                value={formData.yieldPerformedBy}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Theoretical Yield"
+                                                value={calculatedValues.theoreticalYield}
+                                                onChange={(e) => setCalculatedValues(prev => ({ ...prev, theoreticalYield: e.target.value }))}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Lot Number"
+                                                value={calculatedValues.lotNumber}
+                                                onChange={(e) => setCalculatedValues(prev => ({ ...prev, lotNumber: e.target.value }))}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Expiry Date"
+                                                type="date"
+                                                value={calculatedValues.expiryDate}
+                                                onChange={(e) => setCalculatedValues(prev => ({ ...prev, expiryDate: e.target.value }))}
+                                                InputLabelProps={{ shrink: true }}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Shelf Life (days)"
+                                                value={calculatedValues.shelfLife}
+                                                onChange={(e) => setCalculatedValues(prev => ({ ...prev, shelfLife: e.target.value }))}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Photo Attachments */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'warning.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Photo Attachments
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Add photos to document the batch process
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <PhotoAttachment
+                                        photos={photos}
+                                        setPhotos={setPhotos}
+                                        formId={formId}
+                                    />
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+                </Grid>
+            </Container>
+
+            <Snackbar 
+                open={snackbar.open} 
+                autoHideDuration={6000} 
+                onClose={handleCloseSnackbar}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={handleCloseSnackbar} 
+                    severity={snackbar.severity} 
+                    sx={{ 
+                        width: '100%',
+                        borderRadius: 3,
+                        fontWeight: 600,
+                    }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
+        </Box>
     );
 }
 
-export default BatchSheet;
+export default BatchSheet; 

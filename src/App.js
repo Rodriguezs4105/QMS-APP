@@ -3,24 +3,24 @@ import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, query, collection, where, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 
+// Material UI imports
+import { ThemeProvider } from '@mui/material/styles';
+import { CssBaseline, Box, CircularProgress, Typography, Button, Paper, BottomNavigation, BottomNavigationAction, Badge, Container } from '@mui/material';
+import { Home, List, Archive as ArchiveIcon, Settings as SettingsIcon } from '@mui/icons-material';
+import theme from './theme';
+
 // --- Page Components ---
 import Login from './Login';
 import EmployeeDashboard from './EmployeeDashboard';
 import ManagerDashboard from './ManagerDashboard';
 import FormsList from './FormsList';
 import Settings from './Settings';
-import FormRenderer from './FormRenderer'; // Use the new FormRenderer
+import FormRenderer from './FormRenderer';
 import VerificationDetail from './VerificationDetail';
 import Archive from './Archive';
 import FormEditor from './FormEditor';
 import FormViewer from './FormViewer';
 import SavedFormEditor from './SavedFormEditor';
-
-// --- Navigation Icons ---
-const HomeIcon = ({ isActive }) => <svg viewBox="0 0 24 24" className={`w-6 h-6 ${isActive ? 'text-purple-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>;
-const ListIcon = ({ isActive }) => <svg viewBox="0 0 24 24" className={`w-6 h-6 ${isActive ? 'text-purple-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>;
-const ArchiveIcon = ({ isActive }) => <svg viewBox="0 0 24 24" className={`w-6 h-6 ${isActive ? 'text-purple-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>;
-const SettingsIcon = ({ isActive }) => <svg viewBox="0 0 24 24" className={`w-6 h-6 ${isActive ? 'text-purple-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06-.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"></path><circle cx="12" cy="12" r="3"></circle></svg>;
 
 function App() {
   const [userProfile, setUserProfile] = useState(null);
@@ -77,15 +77,92 @@ function App() {
   };
   const handleNavigate = (targetPage) => setPage(targetPage);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+          minHeight="100vh"
+          sx={{
+            background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3,
+            }}
+          >
+            <CircularProgress size={48} thickness={4} />
+            <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 500 }}>
+              Loading QMS...
+            </Typography>
+          </Box>
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
   if (!userProfile) return <Login />;
-  if (userProfile.user && !userProfile.role) return (
-    <div className="min-h-screen flex flex-col items-center justify-center text-center p-4">
-        <h2 className="text-2xl font-bold mb-2">Verification Incomplete</h2>
-        <p className="text-gray-600">Your user profile is not set up correctly. Please contact an administrator.</p>
-        <button onClick={handleSignOut} className="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg">Sign Out</button>
-    </div>
-  );
+
+  if (userProfile.user && !userProfile.role) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
+          minHeight="100vh"
+          textAlign="center"
+          sx={{
+            background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)',
+            p: 3,
+          }}
+        >
+          <Container maxWidth="sm">
+            <Box
+              sx={{
+                background: 'rgba(255, 255, 255, 0.8)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: 4,
+                p: 4,
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+              }}
+            >
+              <Typography variant="h4" component="h2" gutterBottom sx={{ fontWeight: 700, mb: 2 }}>
+                Verification Incomplete
+              </Typography>
+              <Typography variant="body1" color="text.secondary" paragraph sx={{ mb: 3, lineHeight: 1.6 }}>
+                Your user profile is not set up correctly. Please contact an administrator to complete your account setup.
+              </Typography>
+              <Button
+                variant="contained"
+                color="error"
+                onClick={handleSignOut}
+                sx={{ 
+                  px: 4, 
+                  py: 1.5,
+                  borderRadius: 3,
+                  fontWeight: 600,
+                }}
+              >
+                Sign Out
+              </Button>
+            </Box>
+          </Container>
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   if (formToEdit) return <FormEditor form={formToEdit} onBack={handleBack} />;
   if (savedFormToEdit) return <SavedFormEditor savedForm={savedFormToEdit} onBack={handleBack} />;
@@ -95,42 +172,130 @@ function App() {
 
   const renderPage = () => {
     const role = userProfile.role;
-    if (page === 'Dashboard') return role === 'manager' ? <ManagerDashboard onFormSelect={handleVerificationSelect} onSavedFormSelect={handleSavedFormEdit} /> : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} onSavedFormSelect={handleSavedFormEdit} />;
+    if (page === 'Dashboard') {
+      return role === 'manager' 
+        ? <ManagerDashboard onFormSelect={handleVerificationSelect} onSavedFormSelect={handleSavedFormEdit} /> 
+        : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} onSavedFormSelect={handleSavedFormEdit} />;
+    }
     if (page === 'Forms') return <FormsList onFormSelect={handleFormSelect} />;
     if (page === 'Archive') return <Archive onFormSelect={handleArchivedFormSelect} />;
     if (page === 'Settings') return <Settings handleSignOut={handleSignOut} />;
-    return role === 'manager' ? <ManagerDashboard onFormSelect={handleVerificationSelect} onSavedFormSelect={handleSavedFormEdit} /> : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} />;
+    return role === 'manager' 
+      ? <ManagerDashboard onFormSelect={handleVerificationSelect} onSavedFormSelect={handleSavedFormEdit} /> 
+      : <EmployeeDashboard onNavigate={handleNavigate} onFormSelect={handleFormEdit} />;
+  };
+
+  const getNavigationValue = () => {
+    switch (page) {
+      case 'Dashboard': return 0;
+      case 'Archive': return 1;
+      case 'Forms': return 2;
+      case 'Settings': return 3;
+      default: return 0;
+    }
+  };
+
+  const handleNavigationChange = (event, newValue) => {
+    switch (newValue) {
+      case 0: setPage('Dashboard'); break;
+      case 1: setPage('Archive'); break;
+      case 2: setPage('Forms'); break;
+      case 3: setPage('Settings'); break;
+      default: setPage('Dashboard');
+    }
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen flex flex-col">
-      <main className="flex-grow pb-20">{renderPage()}</main>
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200">
-        <div className="max-w-md mx-auto flex justify-around h-16 items-center">
-          <button onClick={() => setPage('Dashboard')} className="flex flex-col items-center justify-center text-xs gap-1 w-20 relative">
-            <HomeIcon isActive={page === 'Dashboard'} />
-            <span className={page === 'Dashboard' ? 'text-purple-600' : 'text-gray-500'}>Dashboard</span>
-            {userProfile.role === 'manager' && pendingReviewCount > 0 && (
-              <span className="absolute top-0 right-3 block h-5 w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">{pendingReviewCount}</span>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          minHeight: '100vh', 
+          bgcolor: 'background.default',
+          background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)',
+        }}
+      >
+        <Box 
+          component="main" 
+          sx={{ 
+            flexGrow: 1, 
+            pb: 8,
+            pt: 1,
+          }}
+        >
+          {renderPage()}
+        </Box>
+        
+        <Paper 
+          sx={{ 
+            position: 'fixed', 
+            bottom: 0, 
+            left: 0, 
+            right: 0, 
+            zIndex: 1000,
+            borderRadius: '20px 20px 0 0',
+            mx: 1,
+            mb: 1,
+          }} 
+          elevation={0}
+        >
+          <BottomNavigation
+            value={getNavigationValue()}
+            onChange={handleNavigationChange}
+            showLabels
+            sx={{
+              '& .MuiBottomNavigationAction-root': {
+                minWidth: 'auto',
+                padding: '8px 12px',
+                '&.Mui-selected': {
+                  color: 'primary.main',
+                },
+              },
+              '& .MuiBottomNavigationAction-label': {
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                marginTop: '4px',
+              },
+            }}
+          >
+            <BottomNavigationAction
+              label="Dashboard"
+              icon={
+                <Badge 
+                  badgeContent={userProfile.role === 'manager' ? pendingReviewCount : 0} 
+                  color="error"
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      fontSize: '0.7rem',
+                      height: '18px',
+                      minWidth: '18px',
+                    },
+                  }}
+                >
+                  <Home />
+                </Badge>
+              }
+            />
+            {userProfile.role === 'manager' && (
+              <BottomNavigationAction
+                label="Archive"
+                icon={<ArchiveIcon />}
+              />
             )}
-          </button>
-          {userProfile.role === 'manager' && (
-            <button onClick={() => setPage('Archive')} className="flex flex-col items-center justify-center text-xs gap-1 w-20">
-                <ArchiveIcon isActive={page === 'Archive'} />
-                <span className={page === 'Archive' ? 'text-purple-600' : 'text-gray-500'}>Archive</span>
-            </button>
-          )}
-          <button onClick={() => setPage('Forms')} className="flex flex-col items-center justify-center text-xs gap-1 w-20">
-            <ListIcon isActive={page === 'Forms'} />
-            <span className={page === 'Forms' ? 'text-purple-600' : 'text-gray-500'}>Forms</span>
-          </button>
-          <button onClick={() => setPage('Settings')} className="flex flex-col items-center justify-center text-xs gap-1 w-20">
-            <SettingsIcon isActive={page === 'Settings'} />
-            <span className={page === 'Settings' ? 'text-purple-600' : 'text-gray-500'}>Settings</span>
-          </button>
-        </div>
-      </nav>
-    </div>
+            <BottomNavigationAction
+              label="Forms"
+              icon={<List />}
+            />
+            <BottomNavigationAction
+              label="Settings"
+              icon={<SettingsIcon />}
+            />
+          </BottomNavigation>
+        </Paper>
+      </Box>
+    </ThemeProvider>
   );
 }
 

@@ -1,7 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc, deleteDoc, updateDoc } from './firebase';
+import { db, auth, doc, setDoc, collection, addDoc } from './firebase';
 import { prepareFormDataForFirestore } from './utils/formSubmission';
 import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Divider,
+  Alert,
+  Snackbar,
+  FormControlLabel,
+  Checkbox,
+  Chip,
+  Container,
+  Avatar,
+} from '@mui/material';
+import { 
+  ArrowBack as ArrowBackIcon, 
+  Save as SaveIcon, 
+  Send as SendIcon,
+  Assignment as AssignmentIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
 
 const hummusRecipeData = {
     "Original Hummus": { baseIngredient: 'Chickpeas (Boiled)', ingredients: { 'Chickpeas (Boiled)': '193.62 kg', 'Ice': '47.60 kg', 'Tahini': '77.27 kg', 'Sugar': '4.40 kg', 'Salt': '4.40 kg', 'Garlic Flakes': '2.80 kg', 'White pepper': '0.64 kg', 'Citric acid': '2.80 kg', 'Sunflower Oil': '66.00 kg' } },
@@ -13,8 +51,6 @@ const hummusRecipeData = {
     "Tzatziki": { baseIngredient: 'Greek Yogurt', ingredients: { 'Greek Yogurt': '341 kg', 'Cucumber': '42 kg', 'Sunflower oil': '11.20 kg', 'Parsley': '0.10 kg', 'Garlic powder': '1.39 kg', 'Sea Salt': '2.99 kg', 'Dill dehydrated': '0.10 kg', 'E 42': '0.35 kg', '*Xanthangum': '0.35 kg' } }
 };
 const ingredientCodes = { 'Chickpeas (Boiled)': '6064 / 6079', 'Boiled Chick peas': '6064 / 6079', 'Greek Yogurt': 'N/A', 'Cucumber': '1074', 'Tahini': '6075', 'Florina Pepper (Paste)': '6074', 'Kalamata Paste': '1075', 'Caramelized Onions': '1075', 'Sunflower Oil': '6065 / 6072 / 6073', 'Salt': '6034 / 6069', 'Sea Salt': '6034 / 6069', 'White Sugar': '6070', 'Sugar': '6070', 'Garlic Flakes': '1059', 'White pepper': '6068', 'Citric acid': '6035 / 6045.1', 'Parsley': '6607', 'Dill dehydrated': 'N/A', 'Garlic Grain': 'N/A', 'Pepper': 'N/A', 'Florina Pepper (Strips)': '6074', 'Lemon': '6076', 'Kalamata Pieces': 'N/A', 'E 42': '6606', '*Xanthangum': '6602', 'Ice': 'N/A' };
-
-const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
 
 function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, originalForm, onSubmit }) {
     const [recipeName, setRecipeName] = useState(originalForm?.recipeName || '');
@@ -37,7 +73,7 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
     const [calculatedValues, setCalculatedValues] = useState(originalForm?.calculatedValues || {
         theoreticalYield: '',
     });
-    // No useState for savedFormId; always use originalForm?.id
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
     useEffect(() => {
         // Update lot number when date or batch number changes
@@ -58,7 +94,10 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
         // Calculate theoretical yield
         const recipe = hummusRecipeData[recipeName];
         if (recipe) {
-            const totalYield = Object.values(recipe.ingredients).reduce((sum, amount) => sum + parseFloat(amount), 0);
+            const totalYield = Object.values(recipe.ingredients).reduce((sum, amount) => {
+                const numValue = parseFloat(amount.replace(' kg', ''));
+                return sum + (isNaN(numValue) ? 0 : numValue);
+            }, 0);
             setCalculatedValues({ theoreticalYield: totalYield.toFixed(2) + ' kg' });
         } else {
             setCalculatedValues({ theoreticalYield: '' });
@@ -72,34 +111,29 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
-        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+        setFormData(prev => ({
+            ...prev,
+            [name]: type === 'checkbox' ? checked : value
+        }));
     };
 
     const handleLotChange = (ingredient, value) => {
-        setIngredientLots(prev => ({ ...prev, [ingredient]: value }));
-    };
-
-    const handleToday = (field) => {
-        setFormData(prev => ({ ...prev, [field]: new Date().toISOString().split('T')[0] }));
+        setIngredientLots(prev => ({
+            ...prev,
+            [ingredient]: value
+        }));
     };
 
     const handleSaveForLater = async () => {
         const user = auth.currentUser;
-        const recipe = hummusRecipeData[recipeName];
         const savedData = prepareFormDataForFirestore(
             {
                 ...formData,
                 recipeName,
-                ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
-                    name,
-                    code: ingredientCodes[name] || 'N/A',
-                    amount,
-                    lot: ingredientLots[name] || ''
-                })),
+                ingredientLots,
                 calculatedValues,
-                formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
-                formType: 'dynamicHummusDipsBatchSheet',
-                date: formData.date
+                formTitle: formTemplate?.title || 'F-11: Dips Batch Sheet',
+                formType: 'dipsBatchSheet'
             },
             {
                 savedBy: user?.email || 'Unknown User',
@@ -107,173 +141,507 @@ function DipsBatchSheet({ formTemplate, onBack, isEditing = false, onSave, origi
                 isSavedForm: true
             }
         );
+
         try {
-            let docRef;
-            if (originalForm?.id) {
-                await updateDoc(doc(db, "savedForms", originalForm.id), savedData);
-                docRef = { id: originalForm.id };
-            } else {
-                docRef = await addDoc(collection(db, "savedForms"), savedData);
-            }
-            // Log audit trail
-            await logAuditTrail(
-                AUDIT_ACTIONS.FORM_SAVED,
-                docRef.id,
-                'dynamicHummusDipsBatchSheet',
-                formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
-                {
-                    recipeName,
-                    batchNumber: formData.batchNumber,
-                    date: formData.date
-                }
-            );
-            alert("Form saved for later! You can continue editing it from your dashboard.");
-            onBack();
+            const docRef = await addDoc(collection(db, "savedForms"), savedData);
+            setSnackbar({ open: true, message: "Form saved successfully!", severity: 'success' });
+            if (onSave) onSave(docRef.id);
         } catch (error) {
-            console.error("Error saving form: ", error);
-            alert("Error saving form. See console for details.");
+            console.error("Error saving form:", error);
+            setSnackbar({ open: true, message: "Failed to save form.", severity: 'error' });
         }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         const user = auth.currentUser;
-        const recipe = hummusRecipeData[recipeName];
-        const finalData = prepareFormDataForFirestore(
+        
+        const formDataToSubmit = prepareFormDataForFirestore(
             {
                 ...formData,
                 recipeName,
-                ingredients: Object.entries(recipe?.ingredients || {}).map(([name, amount]) => ({
-                    name,
-                    code: ingredientCodes[name] || 'N/A',
-                    amount,
-                    lot: ingredientLots[name] || ''
-                })),
+                ingredientLots,
                 calculatedValues,
-                formTitle: formTemplate?.title || 'Dynamic Hummus/Dips Batch Sheet',
-                date: formData.date
+                formTitle: formTemplate?.title || 'F-11: Dips Batch Sheet',
+                formType: 'dipsBatchSheet'
             },
             {
                 submittedBy: user?.email || 'Unknown User',
-                status: 'Pending Review',
+                status: "Pending Review",
                 isCompletedForm: true
             }
         );
+
         try {
-            if (isEditing && onSave) {
-                await onSave(finalData);
-                onBack();
-            } else if (onSubmit && originalForm?.id) {
-                await deleteDoc(doc(db, "savedForms", originalForm.id));
-                const newFormRef = doc(collection(db, "completedForms"));
-                await setDoc(newFormRef, finalData);
-                alert('Form submitted for review!');
-                onBack();
-            } else {
-                const newFormRef = doc(collection(db, "completedForms"));
-                await setDoc(newFormRef, finalData);
-                alert('Form submitted for review!');
-                onBack();
-            }
+            const docRef = await addDoc(collection(db, "completedForms"), formDataToSubmit);
+            
+            // Log audit trail
+            await logAuditTrail(
+                user?.email || 'Unknown User',
+                AUDIT_ACTIONS.SUBMIT,
+                'F-11: Dips Batch Sheet',
+                docRef.id,
+                formData
+            );
+
+            setSnackbar({ open: true, message: "Form submitted successfully!", severity: 'success' });
+            if (onSubmit) onSubmit();
         } catch (error) {
-            console.error('Error submitting form: ', error);
-            alert('Error submitting form. See console for details.');
+            console.error("Error submitting form:", error);
+            setSnackbar({ open: true, message: "Failed to submit form.", severity: 'error' });
         }
     };
 
-    const recipe = hummusRecipeData[recipeName];
+    const handleCloseSnackbar = () => {
+        setSnackbar({ ...snackbar, open: false });
+    };
 
     return (
-        <div>
-            <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-20">
-                <div className="flex justify-between items-center">
-                    <button onClick={onBack} className="text-white p-2 -ml-2"><BackIcon /></button>
-                    <h1 className="text-xl font-bold text-white truncate">Dynamic Hummus/Dips Batch Sheet</h1>
-                    <div className="w-6"></div>
-                </div>
-            </header>
-            <main className="p-4">
-                <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
+        <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)' }}>
+            <AppBar 
+                position="sticky" 
+                elevation={0}
+                sx={{ 
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(20px)',
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                }}
+            >
+                <Toolbar sx={{ justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <IconButton 
+                            onClick={onBack}
+                            sx={{ 
+                                color: 'text.secondary',
+                                '&:hover': {
+                                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                                }
+                            }}
+                        >
+                            <ArrowBackIcon />
+                        </IconButton>
+                        <Avatar 
+                            sx={{ 
+                                bgcolor: 'warning.main',
+                                width: 40,
+                                height: 40,
+                                fontSize: '1.2rem',
+                                fontWeight: 600,
+                            }}
+                        >
+                            <AssignmentIcon />
+                        </Avatar>
+                        <Box>
+                            <Typography variant="h6" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                F-11: Dips Batch Sheet
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                {isEditing ? 'Editing form' : 'Create new batch sheet'}
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            variant="outlined"
+                            startIcon={<SaveIcon />}
+                            onClick={handleSaveForLater}
+                            sx={{
+                                borderRadius: 3,
+                                px: 3,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Save
+                        </Button>
+                        <Button
+                            variant="contained"
+                            startIcon={<SendIcon />}
+                            onClick={handleSubmit}
+                            sx={{
+                                borderRadius: 3,
+                                px: 3,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Submit
+                        </Button>
+                    </Box>
+                </Toolbar>
+            </AppBar>
+
+            <Container maxWidth="lg" sx={{ py: 3 }}>
+                <Grid container spacing={3}>
                     {/* Recipe Selection */}
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
-                            <label htmlFor="recipe-select" className="block text-lg font-semibold text-gray-700 mb-3">Select Recipe</label>
-                            <select id="recipe-select" value={recipeName} onChange={handleRecipeChange} className="w-full bg-white border-2 border-blue-300 rounded-lg px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" required>
-                                <option value="">-- Choose a Recipe --</option>
-                                {Object.keys(hummusRecipeData).map(name => <option key={name} value={name}>{name}</option>)}
-                            </select>
-                        </div>
-                    </div>
-                    {recipe && (
-                        <div className="space-y-6">
-                            {/* Recipe Information */}
-                            <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                                <table className="w-full table-bordered responsive-table mb-4">
-                                    <tbody>
-                                        <tr>
-                                            <td className="p-2"><input type="date" name="date" value={formData.date} onChange={handleInputChange} className="w-full bg-white border-b border-gray-400 p-1" /></td>
-                                            <td className="p-2"><input type="text" name="batchBy" value={formData.batchBy} onChange={handleInputChange} placeholder="Batch By" className="w-full bg-white border-b border-gray-400 p-1" /></td>
-                                            <td className="p-2"><input type="number" name="batchNumber" value={formData.batchNumber} onChange={handleInputChange} placeholder="Batch #" className="w-full bg-white border-b border-gray-400 p-1" /></td>
-                                        </tr>
-                                        <tr>
-                                            <td colSpan="3" className="p-2 font-bold"><input type="text" name="lotNumber" value={formData.lotNumber} readOnly className="w-full bg-gray-200 text-gray-500 p-1 font-bold" /></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                                {/* Calculated Values Section */}
-                                <div className="flex flex-wrap gap-4 mb-4">
-                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex-1 min-w-[180px]">
-                                        <div className="text-xs text-gray-500 font-semibold mb-1">Theoretical Batch Yield</div>
-                                        <div className="text-lg font-bold text-blue-700">{calculatedValues.theoreticalYield}</div>
-                                    </div>
-                                </div>
-                                <div className="section-title my-4 font-bold">PRE-PROCESS INSPECTION</div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center mb-4">
-                                    <div><label className="flex flex-col items-center"><span className="font-bold mb-1">CIP ACID FLUSH</span><input type="checkbox" name="cipFlush" checked={formData.cipFlush} onChange={handleInputChange} className="h-6 w-6" /></label></div>
-                                    <div><label className="flex flex-col items-center"><span className="font-bold mb-1">VISUAL CHECK</span><input type="checkbox" name="visualCheck" checked={formData.visualCheck} onChange={handleInputChange} className="h-6 w-6" /></label></div>
-                                    <div><label className="flex flex-col items-center"><span className="font-bold mb-1">CHANGEOVER</span><input type="checkbox" name="changeover" checked={formData.changeover} onChange={handleInputChange} className="h-6 w-6" /></label></div>
-                                </div>
-                                <div className="section-title my-4 font-bold">MIX PREPARATION</div>
-                                <table className="w-full bordered-table text-sm mb-4 responsive-table">
-                                    <thead><tr><th>CODE</th><th>INGREDIENT</th><th>Amount (Kg)</th><th>LOT #:</th></tr></thead>
-                                    <tbody>
-                                        {Object.entries(recipe.ingredients).map(([name, amount]) => (
-                                            <tr key={name} className="bg-gray-50">
-                                                <td className="p-2 table-bordered">{ingredientCodes[name] || 'N/A'}</td>
-                                                <td className="p-2 table-bordered text-left">{name}</td>
-                                                <td className="p-2 table-bordered">{amount}</td>
-                                                <td className="p-2 table-bordered"><input type="text" value={ingredientLots[name] || ''} onChange={e => handleLotChange(name, e.target.value)} className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-gray-900" /></td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                <div className="section-title my-4 font-bold">PROCESS CONTROL</div>
-                                <table className="w-full bordered-table text-sm mb-4 responsive-table">
-                                    <tbody>
-                                        <tr><td className="font-bold p-2">pH</td><td className="p-1"><input type="text" name="phValue" value={formData.phValue} onChange={handleInputChange} className="input-field w-full bg-white rounded border border-gray-300 p-1" /></td></tr>
-                                        <tr><td className="p-2">SCALE TESTED WITH CERTIFIED WEIGHT BEFORE BATCH START?</td><td className="p-1"><input type="checkbox" name="scaleTested" checked={formData.scaleTested} onChange={handleInputChange} className="w-6 h-6" /></td></tr>
-                                        <tr><td className="p-2">MIXER AND FILLER CHECKED FOR MISSING PIECES OR METAL SHAVINGS?</td><td className="p-1"><input type="checkbox" name="mixerChecked" checked={formData.mixerChecked} onChange={handleInputChange} className="w-6 h-6" /></td></tr>
-                                        <tr><td className="p-2">DOES THE PRODUCT MEET SPECIFICATIONS? (LOOK, TASTE, CONSTISTENCY)</td><td className="p-1"><input type="checkbox" name="specMet" checked={formData.specMet} onChange={handleInputChange} className="w-6 h-6" /></td></tr>
-                                        <tr><td className="p-2">CALIBRATION NEEDED?</td><td className="p-1"><input type="checkbox" name="calibNeeded" checked={formData.calibNeeded} onChange={handleInputChange} className="w-6 h-6" /></td></tr>
-                                        <tr><td className="p-2 font-bold">ACTUAL BATCH YIELD:</td><td className="p-1"><input type="text" name="actualYield" value={formData.actualYield} onChange={handleInputChange} className="input-field w-full bg-white rounded border border-gray-300 p-1" /></td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div className="flex justify-end space-x-4">
-                                <button 
-                                    type="button" 
-                                    onClick={handleSaveForLater}
-                                    className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-lg shadow-md hover:from-yellow-600 hover:to-orange-600 transition-colors"
-                                >
-                                    Save for Later
-                                </button>
-                                <button type="submit" className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-lg shadow-md hover:from-green-600 hover:to-emerald-600 transition-colors">Submit for Review</button>
-                            </div>
-                        </div>
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Recipe Selection
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Choose the dip recipe for this batch
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <FormControl fullWidth>
+                                        <InputLabel>Select Recipe</InputLabel>
+                                        <Select
+                                            value={recipeName}
+                                            onChange={handleRecipeChange}
+                                            label="Select Recipe"
+                                        >
+                                            {Object.keys(hummusRecipeData).map((recipe) => (
+                                                <MenuItem key={recipe} value={recipe}>
+                                                    {recipe}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Basic Information */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'secondary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Basic Information
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Enter batch details and specifications
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Date"
+                                                name="date"
+                                                type="date"
+                                                value={formData.date}
+                                                onChange={handleInputChange}
+                                                InputLabelProps={{ shrink: true }}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Batch Number"
+                                                name="batchNumber"
+                                                value={formData.batchNumber}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Batch By"
+                                                name="batchBy"
+                                                value={formData.batchBy}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Lot Number"
+                                                name="lotNumber"
+                                                value={formData.lotNumber}
+                                                InputProps={{ readOnly: true }}
+                                                sx={{ '& .MuiInputBase-input': { bgcolor: 'rgba(0, 0, 0, 0.04)' } }}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Actual Yield"
+                                                name="actualYield"
+                                                value={formData.actualYield}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="pH Value"
+                                                name="phValue"
+                                                value={formData.phValue}
+                                                onChange={handleInputChange}
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <TextField
+                                                fullWidth
+                                                label="Theoretical Yield"
+                                                value={calculatedValues.theoreticalYield}
+                                                InputProps={{ readOnly: true }}
+                                                sx={{ '& .MuiInputBase-input': { bgcolor: 'rgba(0, 0, 0, 0.04)' } }}
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Ingredients Table */}
+                    {recipeName && (
+                        <Grid item xs={12}>
+                            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                                <CardContent sx={{ p: 0 }}>
+                                    <Box sx={{ p: 3, pb: 2 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                            <Box
+                                                sx={{
+                                                    width: 40,
+                                                    height: 40,
+                                                    borderRadius: '50%',
+                                                    bgcolor: 'success.main',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                            </Box>
+                                            <Box>
+                                                <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                    Ingredients
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    {Object.keys(hummusRecipeData[recipeName]?.ingredients || {}).length} ingredient{Object.keys(hummusRecipeData[recipeName]?.ingredients || {}).length !== 1 ? 's' : ''} for this recipe
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ p: 3 }}>
+                                        <TableContainer component={Paper} sx={{ borderRadius: 3, overflow: 'hidden' }}>
+                                            <Table>
+                                                <TableHead>
+                                                    <TableRow sx={{ bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Ingredient</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Code</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Amount</TableCell>
+                                                        <TableCell sx={{ fontWeight: 600 }}>Lot Number</TableCell>
+                                                    </TableRow>
+                                                </TableHead>
+                                                <TableBody>
+                                                    {Object.entries(hummusRecipeData[recipeName]?.ingredients || {}).map(([ingredient, amount]) => (
+                                                        <TableRow key={ingredient} hover>
+                                                            <TableCell sx={{ fontWeight: 600 }}>
+                                                                {ingredient}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {ingredientCodes[ingredient] || 'N/A'}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {amount}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <TextField
+                                                                    size="small"
+                                                                    value={ingredientLots[ingredient] || ''}
+                                                                    onChange={(e) => handleLotChange(ingredient, e.target.value)}
+                                                                    placeholder="Enter lot number"
+                                                                    sx={{ minWidth: 150 }}
+                                                                />
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </TableContainer>
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Grid>
                     )}
-                </form>
-            </main>
-        </div>
+
+                    {/* Quality Checks */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'info.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Quality Checks
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Complete all required quality checks
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.cipFlush}
+                                                        onChange={handleInputChange}
+                                                        name="cipFlush"
+                                                    />
+                                                }
+                                                label="CIP Flush Completed"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.visualCheck}
+                                                        onChange={handleInputChange}
+                                                        name="visualCheck"
+                                                    />
+                                                }
+                                                label="Visual Check Completed"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.changeover}
+                                                        onChange={handleInputChange}
+                                                        name="changeover"
+                                                    />
+                                                }
+                                                label="Changeover Completed"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.scaleTested}
+                                                        onChange={handleInputChange}
+                                                        name="scaleTested"
+                                                    />
+                                                }
+                                                label="Scale Tested"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.mixerChecked}
+                                                        onChange={handleInputChange}
+                                                        name="mixerChecked"
+                                                    />
+                                                }
+                                                label="Mixer Checked"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.specMet}
+                                                        onChange={handleInputChange}
+                                                        name="specMet"
+                                                    />
+                                                }
+                                                label="Specifications Met"
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={4}>
+                                            <FormControlLabel
+                                                control={
+                                                    <Checkbox
+                                                        checked={formData.calibNeeded}
+                                                        onChange={handleInputChange}
+                                                        name="calibNeeded"
+                                                    />
+                                                }
+                                                label="Calibration Needed"
+                                            />
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+                </Grid>
+            </Container>
+
+            <Snackbar 
+                open={snackbar.open} 
+                autoHideDuration={6000} 
+                onClose={handleCloseSnackbar}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={handleCloseSnackbar} 
+                    severity={snackbar.severity} 
+                    sx={{ 
+                        width: '100%',
+                        borderRadius: 3,
+                        fontWeight: 600,
+                    }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
+        </Box>
     );
 }
 

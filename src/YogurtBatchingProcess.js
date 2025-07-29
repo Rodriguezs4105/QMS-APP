@@ -1,326 +1,543 @@
 import React, { useState } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
+import { db, auth, doc, setDoc, collection, addDoc } from './firebase';
+import { prepareFormDataForFirestore } from './utils/formSubmission';
+import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Divider,
+  Alert,
+  Snackbar,
+  Container,
+  Avatar,
+  FormControlLabel,
+  Checkbox,
+} from '@mui/material';
+import { 
+  ArrowBack as ArrowBackIcon, 
+  Save as SaveIcon, 
+  Send as SendIcon,
+  Assignment as AssignmentIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
 
-// --- ICONS ---
-const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
+const processSteps = [
+  'Milk Receiving',
+  'Pasteurization',
+  'Cooling',
+  'Culturing',
+  'Packaging'
+];
 
-function YogurtBatchingProcess({ onBack, isEditing = false, onSave, originalForm, onSubmit }) {
-    const [formData, setFormData] = useState({
-        date: originalForm?.date || new Date().toISOString().split('T')[0],
-        batchSize: originalForm?.batchSize || '',
-        batchBy: originalForm?.batchBy || '',
-        batchRecipe: originalForm?.batchRecipe || ''
-    });
+const processColumns = [
+  { key: 'start_time', label: 'Start Time', type: 'time' },
+  { key: 'end_time', label: 'End Time', type: 'time' },
+  { key: 'temperature', label: 'Temperature (°C)', type: 'text' },
+  { key: 'pressure', label: 'Pressure (bar)', type: 'text' },
+  { key: 'operator', label: 'Operator', type: 'text' },
+  { key: 'notes', label: 'Notes', type: 'text' }
+];
 
-    const [mainBatchingData, setMainBatchingData] = useState(originalForm?.mainBatchingData || [
-        { step: 'Heat Milk to:', qc: '45°C - 50°C', startTime: '', endTime: '', comments: '' },
-        { step: 'Add Raw Material', qc: '(Add Agar in Between)', startTime: '', endTime: '', comments: '' },
-        { step: 'Mix for (Tank Level >2200kg)', qc: '1hr 25min', startTime: '', endTime: '', comments: '' }
-    ]);
+function YogurtBatchingProcess({ formTemplate, onBack, isEditing = false, onSave, originalForm, onSubmit }) {
+  const [formData, setFormData] = useState({
+    date: originalForm?.date || '',
+    batchNumber: originalForm?.batchNumber || '',
+    batchSize: originalForm?.batchSize || '',
+    productType: originalForm?.productType || '',
+    lotNumber: originalForm?.lotNumber || '',
+    processSteps: originalForm?.processSteps || processSteps.map(() => ({
+      start_time: '',
+      end_time: '',
+      temperature: '',
+      pressure: '',
+      operator: '',
+      notes: ''
+    })),
+    qualityChecks: originalForm?.qualityChecks || {
+      phCheck: false,
+      viscosityCheck: false,
+      tasteCheck: false,
+      visualCheck: false,
+      temperatureCheck: false
+    },
+    finalYield: originalForm?.finalYield || '',
+    operator: originalForm?.operator || ''
+  });
 
-    const [mixingSheerData, setMixingSheerData] = useState(originalForm?.mixingSheerData || [
-        { step: 'Single Batch', qc: '20 Min.', startTime: '', endTime: '', comments: '' },
-        { step: 'Double Batch (3850kg)', qc: '25 TO 30 Min', startTime: '', endTime: '', comments: '' },
-        { step: 'Cool Milk Down to:', qc: '3°C', startTime: '', endTime: '', comments: '' }
-    ]);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
 
-    const handleMainBatchingChange = (index, field, value) => {
-        const newMainBatchingData = [...mainBatchingData];
-        newMainBatchingData[index] = { ...newMainBatchingData[index], [field]: value };
-        setMainBatchingData(newMainBatchingData);
-    };
+  const handleProcessStepChange = (stepIndex, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      processSteps: prev.processSteps.map((step, idx) => 
+        idx === stepIndex ? { ...step, [field]: value } : step
+      )
+    }));
+  };
 
-    const handleMixingSheerChange = (index, field, value) => {
-        const newMixingSheerData = [...mixingSheerData];
-        newMixingSheerData[index] = { ...newMixingSheerData[index], [field]: value };
-        setMixingSheerData(newMixingSheerData);
-    };
+  const handleQualityCheckChange = (checkName, value) => {
+    setFormData(prev => ({
+      ...prev,
+      qualityChecks: {
+        ...prev.qualityChecks,
+        [checkName]: value
+      }
+    }));
+  };
 
-    const setToday = () => {
-        setFormData(prev => ({ ...prev, date: new Date().toISOString().split('T')[0] }));
-    };
-
-    const handleSaveForLater = async () => {
-        const user = auth.currentUser;
-
-        const savedData = {
-            ...formData,
-            mainBatchingData,
-            mixingSheerData,
-            formTitle: "F-05: Yogurt Batching Process Record",
-            formType: 'yogurtBatchingProcess',
-            savedBy: user?.email || 'Unknown User',
-            savedAt: serverTimestamp(),
-            status: "Saved for Later"
-        };
-        
-        try {
-            await addDoc(collection(db, "savedForms"), savedData);
-            alert("Form saved for later! You can continue editing it from your dashboard.");
-            onBack();
-        } catch (error) {
-            console.error("Error saving form: ", error);
-            alert("Error saving form. See console for details.");
-        }
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        const user = auth.currentUser;
-
-        const finalData = {
-            ...formData,
-            mainBatchingData,
-            mixingSheerData,
-            formTitle: "F-05: Yogurt Batching Process Record",
-            formType: 'yogurtBatchingProcess',
-            submittedBy: user?.email || 'Unknown User',
-            submittedAt: serverTimestamp(),
-            status: "Pending Review"
-        };
-        
-        try {
-            if (isEditing && onSave) {
-                await onSave(finalData);
-            } else if (onSubmit) {
-                // Handle saved form submission
-                await onSubmit(finalData);
-            } else {
-                const newFormRef = doc(collection(db, "completedForms"));
-                await setDoc(newFormRef, finalData);
-                alert("Form submitted for review!");
-                onBack();
-            }
-        } catch (error) {
-            console.error("Error submitting form: ", error);
-            alert("Error submitting form. See console for details.");
-        }
-    };
-
-    return (
-        <div>
-            <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-20">
-                <div className="flex justify-between items-center">
-                    <button onClick={onBack} className="text-white p-2 -ml-2"><BackIcon /></button>
-                    <h1 className="text-xl font-bold text-white truncate">F-05: Yogurt Batching Process Record</h1>
-                    <div className="w-6"></div>
-                </div>
-            </header>
-            
-            <main className="p-4">
-                <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
-                    {/* Basic Information */}
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                            <h3 className="text-lg font-semibold mb-4 text-gray-700">Basic Information</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-600">Date</label>
-                                    <div className="flex items-center space-x-2">
-                                        <input 
-                                            type="date" 
-                                            name="date" 
-                                            value={formData.date} 
-                                            onChange={handleInputChange} 
-                                            className="flex-1 bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                            required
-                                        />
-                                        <button 
-                                            type="button" 
-                                            onClick={setToday}
-                                            className="px-3 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
-                                        >
-                                            Today
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-600">Batch Size</label>
-                                    <input 
-                                        type="text" 
-                                        name="batchSize" 
-                                        value={formData.batchSize} 
-                                        onChange={handleInputChange} 
-                                        placeholder="Enter batch size" 
-                                        className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-600">Batch By</label>
-                                    <input 
-                                        type="text" 
-                                        name="batchBy" 
-                                        value={formData.batchBy} 
-                                        onChange={handleInputChange} 
-                                        placeholder="Enter initials" 
-                                        className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-gray-600">Batch Recipe</label>
-                                    <select 
-                                        name="batchRecipe" 
-                                        value={formData.batchRecipe} 
-                                        onChange={handleInputChange} 
-                                        className="w-full bg-white border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors" 
-                                        required
-                                    >
-                                        <option value="">-- Select a Recipe --</option>
-                                        <option value="Low Fat Yogurt">Low Fat Yogurt</option>
-                                        <option value="Esti Low fat">Esti Low fat</option>
-                                        <option value="Esti Whole Greek Yogurt">Esti Whole Greek Yogurt</option>
-                                        <option value="HEB Whole Greek Yogurt">HEB Whole Greek Yogurt</option>
-                                        <option value="Sprouts 5%">Sprouts 5%</option>
-                                        <option value="Dairy Free">Dairy Free</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Yogurt Batching Process */}
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                            <h3 className="text-lg font-semibold mb-4 text-gray-700">Yogurt Batching Process</h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm border-collapse">
-                                    <thead className="bg-gray-100">
-                                        <tr>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Steps</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">QC Parameters</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Start Time</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">End Time</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Comments</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {mainBatchingData.map((step, index) => (
-                                            <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
-                                                <td className="p-3 border border-gray-300 bg-gray-50 font-medium">
-                                                    {step.step}
-                                                </td>
-                                                <td className="p-3 border border-gray-300 bg-gray-50">
-                                                    {step.qc}
-                                                </td>
-                                                <td className="p-3 border border-gray-300">
-                                                    <input 
-                                                        type="time" 
-                                                        value={step.startTime} 
-                                                        onChange={(e) => handleMainBatchingChange(index, 'startTime', e.target.value)} 
-                                                        className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-colors" 
-                                                    />
-                                                </td>
-                                                <td className="p-3 border border-gray-300">
-                                                    <input 
-                                                        type="time" 
-                                                        value={step.endTime} 
-                                                        onChange={(e) => handleMainBatchingChange(index, 'endTime', e.target.value)} 
-                                                        className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-colors" 
-                                                    />
-                                                </td>
-                                                <td className="p-3 border border-gray-300">
-                                                    <input 
-                                                        type="text" 
-                                                        value={step.comments} 
-                                                        onChange={(e) => handleMainBatchingChange(index, 'comments', e.target.value)} 
-                                                        placeholder="Comments" 
-                                                        className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-colors" 
-                                                    />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Mixing / Sheer */}
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                            <h3 className="text-lg font-semibold mb-4 text-gray-700">Mixing / Sheer</h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm border-collapse">
-                                    <thead className="bg-gray-100">
-                                        <tr>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Steps</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">QC Parameters</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Start Time</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">End Time</th>
-                                            <th className="p-3 border border-gray-300 text-left font-semibold text-gray-700">Comments</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {mixingSheerData.map((step, index) => (
-                                            <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
-                                                <td className="p-3 border border-gray-300 bg-gray-50 font-medium">
-                                                    {step.step}
-                                                </td>
-                                                <td className="p-3 border border-gray-300 bg-gray-50">
-                                                    {step.qc}
-                                                </td>
-                                                <td className="p-3 border border-gray-300">
-                                                    <input 
-                                                        type="time" 
-                                                        value={step.startTime} 
-                                                        onChange={(e) => handleMixingSheerChange(index, 'startTime', e.target.value)} 
-                                                        className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-colors" 
-                                                    />
-                                                </td>
-                                                <td className="p-3 border border-gray-300">
-                                                    <input 
-                                                        type="time" 
-                                                        value={step.endTime} 
-                                                        onChange={(e) => handleMixingSheerChange(index, 'endTime', e.target.value)} 
-                                                        className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-colors" 
-                                                    />
-                                                </td>
-                                                <td className="p-3 border border-gray-300">
-                                                    <input 
-                                                        type="text" 
-                                                        value={step.comments} 
-                                                        onChange={(e) => handleMixingSheerChange(index, 'comments', e.target.value)} 
-                                                        placeholder="Comments" 
-                                                        className="w-full bg-white border-2 border-gray-300 rounded px-2 py-1 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-colors" 
-                                                    />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="bg-white p-6 rounded-2xl shadow-lg border">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button 
-                                type="button"
-                                onClick={handleSaveForLater}
-                                className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-yellow-600 hover:to-orange-600 transform hover:scale-105 transition-all duration-200 text-lg"
-                            >
-                                Save for Later
-                            </button>
-                            <button 
-                                type="submit" 
-                                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-lg hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-200 text-lg"
-                            >
-                                {isEditing && onSubmit ? 'Submit for Review' : isEditing ? 'Update and Resubmit' : 'Submit Form'}
-                            </button>
-                        </div>
-                    </div>
-                </form>
-            </main>
-        </div>
+  const handleSaveForLater = async () => {
+    const user = auth.currentUser;
+    const savedData = prepareFormDataForFirestore(
+      {
+        ...formData,
+        formTitle: formTemplate?.title || 'F-12: Yogurt Batching Process',
+        formType: 'yogurtBatchingProcess'
+      },
+      {
+        savedBy: user?.email || 'Unknown User',
+        status: "Saved for Later",
+        isSavedForm: true
+      }
     );
+
+    try {
+      const docRef = await addDoc(collection(db, "savedForms"), savedData);
+      setSnackbar({ open: true, message: "Form saved successfully!", severity: 'success' });
+      if (onSave) onSave(docRef.id);
+    } catch (error) {
+      console.error("Error saving form:", error);
+      setSnackbar({ open: true, message: "Failed to save form.", severity: 'error' });
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const user = auth.currentUser;
+    
+    const formDataToSubmit = prepareFormDataForFirestore(
+      {
+        ...formData,
+        formTitle: formTemplate?.title || 'F-12: Yogurt Batching Process',
+        formType: 'yogurtBatchingProcess'
+      },
+      {
+        submittedBy: user?.email || 'Unknown User',
+        status: "Pending Review",
+        isCompletedForm: true
+      }
+    );
+
+    try {
+      const docRef = await addDoc(collection(db, "completedForms"), formDataToSubmit);
+      
+      // Log audit trail
+      await logAuditTrail(
+        user?.email || 'Unknown User',
+        AUDIT_ACTIONS.SUBMIT,
+        'F-12: Yogurt Batching Process',
+        docRef.id,
+        formData
+      );
+
+      setSnackbar({ open: true, message: "Form submitted successfully!", severity: 'success' });
+      if (onSubmit) onSubmit();
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      setSnackbar({ open: true, message: "Failed to submit form.", severity: 'error' });
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)' }}>
+      <AppBar 
+        position="sticky" 
+        elevation={0}
+        sx={{ 
+          background: 'rgba(255, 255, 255, 0.8)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <Toolbar sx={{ justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <IconButton 
+              onClick={onBack}
+              sx={{ 
+                color: 'text.secondary',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 0, 0, 0.04)',
+                }
+              }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Avatar 
+              sx={{ 
+                bgcolor: 'primary.main',
+                width: 40,
+                height: 40,
+                fontSize: '1.2rem',
+                fontWeight: 600,
+              }}
+            >
+              <AssignmentIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                F-12: Yogurt Batching Process
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                {isEditing ? 'Editing form' : 'Create new batch process'}
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<SaveIcon />}
+              onClick={handleSaveForLater}
+              sx={{
+                borderRadius: 3,
+                px: 3,
+                fontWeight: 600,
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleSubmit}
+              sx={{
+                borderRadius: 3,
+                px: 3,
+                fontWeight: 600,
+              }}
+            >
+              Submit
+            </Button>
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="lg" sx={{ py: 3 }}>
+        <Grid container spacing={3}>
+          {/* Basic Information */}
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 'primary.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        Basic Information
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Enter batch details and specifications
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+                <Divider />
+                <Box sx={{ p: 3 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Date"
+                        name="date"
+                        type="date"
+                        value={formData.date}
+                        onChange={handleInputChange}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Batch Number"
+                        name="batchNumber"
+                        value={formData.batchNumber}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Batch Size"
+                        name="batchSize"
+                        value={formData.batchSize}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Product Type"
+                        name="productType"
+                        value={formData.productType}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Lot Number"
+                        name="lotNumber"
+                        value={formData.lotNumber}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Operator"
+                        name="operator"
+                        value={formData.operator}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Final Yield"
+                        name="finalYield"
+                        value={formData.finalYield}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Process Steps */}
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 'secondary.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        Process Steps
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Record process parameters for each step
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+                <Divider />
+                <Box sx={{ p: 3 }}>
+                  <TableContainer component={Paper} sx={{ borderRadius: 3, overflow: 'hidden' }}>
+                    <Table>
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                          <TableCell sx={{ fontWeight: 600, minWidth: 150 }}>Process Step</TableCell>
+                          {processColumns.map((col) => (
+                            <TableCell key={col.key} sx={{ fontWeight: 600 }}>
+                              {col.label}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {processSteps.map((step, stepIndex) => (
+                          <TableRow key={step} hover>
+                            <TableCell sx={{ fontWeight: 600, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                              {step}
+                            </TableCell>
+                            {processColumns.map((col) => (
+                              <TableCell key={col.key}>
+                                <TextField
+                                  size="small"
+                                  type={col.type}
+                                  value={formData.processSteps[stepIndex][col.key]}
+                                  onChange={(e) => handleProcessStepChange(stepIndex, col.key, e.target.value)}
+                                  InputLabelProps={col.type === 'date' ? { shrink: true } : {}}
+                                  sx={{ minWidth: 120 }}
+                                />
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Quality Checks */}
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 'success.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        Quality Checks
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Complete all required quality checks
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+                <Divider />
+                <Box sx={{ p: 3 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={formData.qualityChecks.phCheck}
+                            onChange={(e) => handleQualityCheckChange('phCheck', e.target.checked)}
+                          />
+                        }
+                        label="pH Check Completed"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={formData.qualityChecks.viscosityCheck}
+                            onChange={(e) => handleQualityCheckChange('viscosityCheck', e.target.checked)}
+                          />
+                        }
+                        label="Viscosity Check Completed"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={formData.qualityChecks.tasteCheck}
+                            onChange={(e) => handleQualityCheckChange('tasteCheck', e.target.checked)}
+                          />
+                        }
+                        label="Taste Check Completed"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={formData.qualityChecks.visualCheck}
+                            onChange={(e) => handleQualityCheckChange('visualCheck', e.target.checked)}
+                          />
+                        }
+                        label="Visual Check Completed"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={formData.qualityChecks.temperatureCheck}
+                            onChange={(e) => handleQualityCheckChange('temperatureCheck', e.target.checked)}
+                          />
+                        }
+                        label="Temperature Check Completed"
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Container>
+
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity} 
+          sx={{ 
+            width: '100%',
+            borderRadius: 3,
+            fontWeight: 600,
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
 }
 
 export default YogurtBatchingProcess; 

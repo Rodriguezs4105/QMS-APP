@@ -1,9 +1,38 @@
 import React, { useState } from 'react';
-import { db, auth, doc, setDoc, serverTimestamp, collection, addDoc } from './firebase';
+import { db, auth, doc, setDoc, collection, addDoc } from './firebase';
 import { prepareFormDataForFirestore } from './utils/formSubmission';
 import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
-
-const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Divider,
+  Alert,
+  Snackbar,
+  Container,
+  Avatar,
+} from '@mui/material';
+import { 
+  ArrowBack as ArrowBackIcon, 
+  Save as SaveIcon, 
+  Send as SendIcon,
+  Assignment as AssignmentIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
 
 const cookingParamsRows = [
   'Soaking Chickpeas',
@@ -41,6 +70,8 @@ function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onS
     storage_record: originalForm?.storage_record || storageRecordRows.map(() => ({ date: '', time: '', temperature: '', comments: '', initials: '' }))
   });
 
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -51,10 +82,6 @@ function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onS
       ...prev,
       [table]: prev[table].map((row, idx) => idx === rowIdx ? { ...row, [key]: value } : row)
     }));
-  };
-
-  const handleToday = (field) => {
-    setFormData(prev => ({ ...prev, [field]: new Date().toISOString().split('T')[0] }));
   };
 
   const handleSaveForLater = async () => {
@@ -71,33 +98,22 @@ function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onS
         isSavedForm: true
       }
     );
-    
+
     try {
       const docRef = await addDoc(collection(db, "savedForms"), savedData);
-      // Log audit trail
-      await logAuditTrail(
-        AUDIT_ACTIONS.FORM_SAVED,
-        docRef.id,
-        'chickpeasBatchingProcess',
-        formTemplate?.title || 'F-10: Chickpeas Batching Process',
-        {
-          batch_name: formData.batch_name,
-          batched_by: formData.batched_by,
-          date: formData.date
-        }
-      );
-      alert("Form saved for later! You can continue editing it from your dashboard.");
-      onBack();
+      setSnackbar({ open: true, message: "Form saved successfully!", severity: 'success' });
+      if (onSave) onSave(docRef.id);
     } catch (error) {
-      console.error("Error saving form: ", error);
-      alert("Error saving form. See console for details.");
+      console.error("Error saving form:", error);
+      setSnackbar({ open: true, message: "Failed to save form.", severity: 'error' });
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
-    const finalData = prepareFormDataForFirestore(
+    
+    const formDataToSubmit = prepareFormDataForFirestore(
       {
         ...formData,
         formTitle: formTemplate?.title || 'F-10: Chickpeas Batching Process',
@@ -105,137 +121,346 @@ function ChickpeasBatchingProcess({ formTemplate, onBack, isEditing = false, onS
       },
       {
         submittedBy: user?.email || 'Unknown User',
-        status: 'Pending Review',
+        status: "Pending Review",
         isCompletedForm: true
       }
     );
-    
+
     try {
-      if (isEditing && onSave) {
-        // Update existing form
-        await onSave(finalData);
-      } else if (onSubmit) {
-        // Handle saved form submission
-        await onSubmit(finalData);
-      } else {
-        // Create new form
-        const newFormRef = doc(collection(db, 'completedForms'));
-        await setDoc(newFormRef, finalData);
-        alert('Form submitted for review!');
-        onBack();
-      }
+      const docRef = await addDoc(collection(db, "completedForms"), formDataToSubmit);
+      
+      // Log audit trail
+      await logAuditTrail(
+        user?.email || 'Unknown User',
+        AUDIT_ACTIONS.SUBMIT,
+        'F-10: Chickpeas Batching Process',
+        docRef.id,
+        formData
+      );
+
+      setSnackbar({ open: true, message: "Form submitted successfully!", severity: 'success' });
+      if (onSubmit) onSubmit();
     } catch (error) {
-      console.error('Error submitting form: ', error);
-      alert('Error submitting form. See console for details.');
+      console.error("Error submitting form:", error);
+      setSnackbar({ open: true, message: "Failed to submit form.", severity: 'error' });
     }
   };
 
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
+  const renderTable = (rows, cols, tableName) => (
+    <TableContainer component={Paper} sx={{ borderRadius: 3, overflow: 'hidden' }}>
+      <Table>
+        <TableHead>
+          <TableRow sx={{ bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+            <TableCell sx={{ fontWeight: 600, minWidth: 200 }}>Process Step</TableCell>
+            {cols.map((col) => (
+              <TableCell key={col.key} sx={{ fontWeight: 600 }}>
+                {col.label}
+              </TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row, rowIdx) => (
+            <TableRow key={rowIdx} hover>
+              <TableCell sx={{ fontWeight: 600, bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+                {row}
+              </TableCell>
+              {cols.map((col) => (
+                <TableCell key={col.key}>
+                  <TextField
+                    size="small"
+                    type={col.type}
+                    value={formData[tableName][rowIdx][col.key]}
+                    onChange={(e) => handleTableChange(tableName, rowIdx, col.key, e.target.value)}
+                    InputLabelProps={col.type === 'date' ? { shrink: true } : {}}
+                    sx={{ minWidth: 120 }}
+                  />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+
   return (
-    <div>
-      <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-20">
-        <div className="flex justify-between items-center">
-          <button onClick={onBack} className="text-white p-2 -ml-2"><BackIcon /></button>
-          <h1 className="text-xl font-bold text-white truncate">F-10: Chickpeas Batching Process</h1>
-          <div className="w-6"></div>
-        </div>
-      </header>
-      <main className="p-4">
-        <form onSubmit={handleSubmit} className="max-w-5xl mx-auto space-y-6">
-          <div className="bg-white p-6 rounded-2xl shadow-lg border space-y-6">
-            <div>
-              <label htmlFor="date" className="block text-lg font-medium text-gray-700 mb-2">Date <span className="text-red-500">*</span>
-                <button type="button" className="today-btn text-xs text-blue-600 ml-2" onClick={() => handleToday('date')}>Today</button>
-              </label>
-              <input type="date" id="date" name="date" value={formData.date} onChange={handleInputChange} required className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div>
-              <label htmlFor="quantity_cooked" className="block text-lg font-medium text-gray-700 mb-2">Quantity Cooked</label>
-              <input type="text" id="quantity_cooked" name="quantity_cooked" value={formData.quantity_cooked} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div>
-              <label htmlFor="batched_by" className="block text-lg font-medium text-gray-700 mb-2">Batched By</label>
-              <input type="text" id="batched_by" name="batched_by" value={formData.batched_by} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div>
-              <label htmlFor="batch_name" className="block text-lg font-medium text-gray-700 mb-2">Batch Name</label>
-              <input type="text" id="batch_name" name="batch_name" value={formData.batch_name} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div>
-              <label htmlFor="lot_cooked" className="block text-lg font-medium text-gray-700 mb-2">Lot # (Cooked Chickpeas)</label>
-              <input type="text" id="lot_cooked" name="lot_cooked" value={formData.lot_cooked} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div>
-              <label htmlFor="lot_raw" className="block text-lg font-medium text-gray-700 mb-2">Lot# (Raw Chickpeas)</label>
-              <input type="text" id="lot_raw" name="lot_raw" value={formData.lot_raw} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div>
-              <label className="block text-lg font-medium text-gray-700 mb-2">Cooking Parameters</label>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left responsive-table table-bordered mb-4">
-                  <thead className="bg-gray-200 text-gray-600 uppercase">
-                    <tr>
-                      <th className="p-2">Parameter</th>
-                      {cookingParamsCols.map(col => <th key={col.key} className="p-2">{col.label}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cookingParamsRows.map((param, i) => (
-                      <tr key={param} className="border-b">
-                        <td className="p-2 font-semibold">{param}</td>
-                        {cookingParamsCols.map(col => (
-                          <td key={col.key} className="p-1">
-                            <input type={col.type} value={formData.cooking_params[i][col.key]} onChange={e => handleTableChange('cooking_params', i, col.key, e.target.value)} className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-gray-900" />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div>
-              <label className="block text-lg font-medium text-gray-700 mb-2">Chickpeas Storage Record</label>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left responsive-table table-bordered mb-4">
-                  <thead className="bg-gray-200 text-gray-600 uppercase">
-                    <tr>
-                      <th className="p-2"></th>
-                      {storageRecordCols.map(col => <th key={col.key} className="p-2">{col.label}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {storageRecordRows.map((action, i) => (
-                      <tr key={action} className="border-b">
-                        <td className="p-2 font-semibold">{action}</td>
-                        {storageRecordCols.map(col => (
-                          <td key={col.key} className="p-1">
-                            <input type={col.type} value={formData.storage_record[i][col.key]} onChange={e => handleTableChange('storage_record', i, col.key, e.target.value)} className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-gray-900" />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div>
-              <label htmlFor="qc_ph" className="block text-lg font-medium text-gray-700 mb-2">¹pH (Cooked Chickpeas)</label>
-              <input type="text" id="qc_ph" name="qc_ph" value={formData.qc_ph} onChange={handleInputChange} className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-gray-900" />
-            </div>
-            <div className="flex justify-end space-x-4">
-              <button 
-                type="button" 
-                onClick={handleSaveForLater}
-                className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-bold rounded-lg shadow-md hover:from-yellow-600 hover:to-orange-600 transition-colors"
-              >
-                Save for Later
-              </button>
-              <button type="submit" className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-lg shadow-md hover:from-green-600 hover:to-emerald-600 transition-colors">Submit for Review</button>
-            </div>
-          </div>
-        </form>
-      </main>
-    </div>
+    <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)' }}>
+      <AppBar 
+        position="sticky" 
+        elevation={0}
+        sx={{ 
+          background: 'rgba(255, 255, 255, 0.8)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <Toolbar sx={{ justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <IconButton 
+              onClick={onBack}
+              sx={{ 
+                color: 'text.secondary',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 0, 0, 0.04)',
+                }
+              }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+            <Avatar 
+              sx={{ 
+                bgcolor: 'success.main',
+                width: 40,
+                height: 40,
+                fontSize: '1.2rem',
+                fontWeight: 600,
+              }}
+            >
+              <AssignmentIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                F-10: Chickpeas Batching Process
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                {isEditing ? 'Editing form' : 'Create new batch process'}
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<SaveIcon />}
+              onClick={handleSaveForLater}
+              sx={{
+                borderRadius: 3,
+                px: 3,
+                fontWeight: 600,
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleSubmit}
+              sx={{
+                borderRadius: 3,
+                px: 3,
+                fontWeight: 600,
+              }}
+            >
+              Submit
+            </Button>
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="lg" sx={{ py: 3 }}>
+        <Grid container spacing={3}>
+          {/* Basic Information */}
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 'primary.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        Basic Information
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Enter batch details and specifications
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+                <Divider />
+                <Box sx={{ p: 3 }}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Date"
+                        name="date"
+                        type="date"
+                        value={formData.date}
+                        onChange={handleInputChange}
+                        InputLabelProps={{ shrink: true }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Batch Name"
+                        name="batch_name"
+                        value={formData.batch_name}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Batched By"
+                        name="batched_by"
+                        value={formData.batched_by}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Quantity Cooked"
+                        name="quantity_cooked"
+                        value={formData.quantity_cooked}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Lot Cooked"
+                        name="lot_cooked"
+                        value={formData.lot_cooked}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Lot Raw"
+                        name="lot_raw"
+                        value={formData.lot_raw}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="QC pH"
+                        name="qc_ph"
+                        value={formData.qc_ph}
+                        onChange={handleInputChange}
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Cooking Parameters */}
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 'secondary.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        Cooking Parameters
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Record cooking process details and measurements
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+                <Divider />
+                <Box sx={{ p: 3 }}>
+                  {renderTable(cookingParamsRows, cookingParamsCols, 'cooking_params')}
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Storage Record */}
+          <Grid item xs={12}>
+            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+              <CardContent sx={{ p: 0 }}>
+                <Box sx={{ p: 3, pb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 'info.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                        Storage Record
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Track storage and temperature conditions
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+                <Divider />
+                <Box sx={{ p: 3 }}>
+                  {renderTable(storageRecordRows, storageRecordCols, 'storage_record')}
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Container>
+
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity} 
+          sx={{ 
+            width: '100%',
+            borderRadius: 3,
+            fontWeight: 600,
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 }
 

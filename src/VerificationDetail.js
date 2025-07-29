@@ -1,20 +1,48 @@
 import React, { useRef, useState } from 'react';
-// 🔧 FIX: Changed getAuth to auth, which is the exported instance from your firebase.js
 import { db, doc, updateDoc, deleteDoc, auth } from './firebase';
 import { logAuditTrail, AUDIT_ACTIONS } from './utils/auditTrail';
 import AuditTrailViewer from './components/AuditTrailViewer';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-
-// --- ICONS ---
-const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
-const DownloadIcon = () => <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>;
-const DeleteIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
+import {
+  Box,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Container,
+  Divider,
+  Alert,
+  Snackbar,
+  Avatar,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+} from '@mui/material';
+import {
+  ArrowBack as ArrowBackIcon,
+  Download as DownloadIcon,
+  Delete as DeleteIcon,
+  Assignment as AssignmentIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
+  Visibility as VisibilityIcon,
+} from '@mui/icons-material';
 
 function VerificationDetail({ form, onBack }) {
     const pdfRef = useRef();
     const [showAuditTrail, setShowAuditTrail] = useState(false);
-    // 🔧 FIX: The imported `auth` object is used directly. The line `const auth = getAuth()` was removed.
+    const [rejectionDialog, setRejectionDialog] = useState(false);
+    const [rejectionReason, setRejectionReason] = useState('');
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const managerName = auth.currentUser?.displayName || auth.currentUser?.email || "Manager";
 
     const handleApprove = async () => {
@@ -25,10 +53,10 @@ function VerificationDetail({ form, onBack }) {
             
             // Log audit trail
             await logAuditTrail(
-                AUDIT_ACTIONS.FORM_APPROVED,
-                form.id,
-                form.formType || 'unknown',
+                managerName,
+                AUDIT_ACTIONS.APPROVE,
                 form.formTitle || 'Unknown Form',
+                form.id,
                 {
                     recipeName: form.recipeName,
                     batchNumber: form.batchNumber,
@@ -37,44 +65,51 @@ function VerificationDetail({ form, onBack }) {
                 }
             );
             
-            alert("Form Approved!");
-            onBack();
+            setSnackbar({ open: true, message: 'Form approved successfully!', severity: 'success' });
+            setTimeout(() => onBack(), 1500);
         } catch (error) {
             console.error("Error approving form: ", error);
-            alert("Failed to approve form.");
+            setSnackbar({ open: true, message: 'Failed to approve form.', severity: 'error' });
         }
     };
 
     const handleReject = async () => {
-        const reason = prompt("Please provide a reason for rejecting this form:");
-        if (!reason) {
-            alert("Rejection cancelled. A reason is required.");
+        if (!rejectionReason.trim()) {
+            setSnackbar({ open: true, message: 'Please provide a reason for rejection.', severity: 'warning' });
             return;
         }
+        
         const formRef = doc(db, "completedForms", form.id);
         try {
-            await updateDoc(formRef, { status: "Rejected", rejectionReason: reason, rejectedBy: managerName, rejectedAt: new Date() });
+            await updateDoc(formRef, { 
+                status: "Rejected", 
+                rejectionReason: rejectionReason, 
+                rejectedBy: managerName, 
+                rejectedAt: new Date() 
+            });
             
             // Log audit trail
             await logAuditTrail(
-                AUDIT_ACTIONS.FORM_REJECTED,
-                form.id,
-                form.formType || 'unknown',
+                managerName,
+                AUDIT_ACTIONS.REJECT,
                 form.formTitle || 'Unknown Form',
+                form.id,
                 {
                     recipeName: form.recipeName,
                     batchNumber: form.batchNumber,
                     batchDate: form.batchDate,
                     rejectedBy: managerName,
-                    rejectionReason: reason
+                    rejectionReason: rejectionReason
                 }
             );
             
-            alert("Form Rejected and sent back to the employee for corrective action.");
-            onBack();
+            setSnackbar({ open: true, message: 'Form rejected and sent back for corrective action.', severity: 'success' });
+            setRejectionDialog(false);
+            setRejectionReason('');
+            setTimeout(() => onBack(), 1500);
         } catch (error) {
             console.error("Error rejecting form: ", error);
-            alert("Failed to reject form.");
+            setSnackbar({ open: true, message: 'Failed to reject form.', severity: 'error' });
         }
     };
 
@@ -86,10 +121,10 @@ function VerificationDetail({ form, onBack }) {
             
             // Log audit trail
             await logAuditTrail(
-                AUDIT_ACTIONS.FORM_DELETED,
-                form.id,
-                form.formType || 'unknown',
+                managerName,
+                AUDIT_ACTIONS.DELETE,
                 form.formTitle || 'Unknown Form',
+                form.id,
                 {
                     recipeName: form.recipeName,
                     batchNumber: form.batchNumber,
@@ -98,137 +133,447 @@ function VerificationDetail({ form, onBack }) {
                 }
             );
             
-            alert("Form deleted successfully!");
-            onBack();
+            setSnackbar({ open: true, message: 'Form deleted successfully!', severity: 'success' });
+            setTimeout(() => onBack(), 1500);
         } catch (error) {
             console.error("Error deleting form: ", error);
-            alert("Failed to delete form.");
+            setSnackbar({ open: true, message: 'Failed to delete form.', severity: 'error' });
         }
     };
 
     const handleDownloadPDF = () => {
-        const input = pdfRef.current;
-        html2canvas(input, { scale: 2 }).then((canvas) => {
+        if (!pdfRef.current) return;
+        
+        html2canvas(pdfRef.current).then(canvas => {
             const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4', true);
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-            const imgX = (pdfWidth - imgWidth * ratio) / 2;
-            const imgY = 15; // Add a top margin
-            pdf.setFontSize(12);
-            pdf.text(`Form: F-06 Dynamic Yogurt Batch Sheet - ${form.recipeName}`, pdfWidth / 2, 10, { align: 'center' });
-            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-            pdf.save(`${form.recipeName}_${form.batchDate}.pdf`);
+            const pdf = new jsPDF();
+            const imgWidth = 210;
+            const pageHeight = 295;
+            const imgHeight = canvas.height * imgWidth / canvas.width;
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            while (heightLeft >= 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+            pdf.save(`${form.formTitle || 'form'}.pdf`);
         });
     };
 
+    const handleCloseSnackbar = () => {
+        setSnackbar({ ...snackbar, open: false });
+    };
+
+    const formatDate = (date) => {
+        if (!date) return 'N/A';
+        if (date.toDate) {
+            return date.toDate().toLocaleString();
+        }
+        return date;
+    };
+
     return (
-        <div>
-            <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-20">
-                <div className="flex justify-between items-center">
-                    <button onClick={onBack} className="text-white p-2 -ml-2"><BackIcon /></button>
-                    <h1 className="text-xl font-bold text-white truncate">Review: {form.recipeName}</h1>
-                    <div className="w-6"></div>
-                </div>
-            </header>
-            
-            <main className="p-4" >
-                <div ref={pdfRef} className="bg-white p-6 shadow-md rounded-lg">
-                    {/* Batch Info */}
-                    <div className="mb-4 border-b pb-4">
-                        <h2 className="text-xl font-bold mb-2">Batch Information</h2>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div><strong className="block text-gray-500">Recipe:</strong> {form.recipeName}</div>
-                            <div><strong className="block text-gray-500">Batch Date:</strong> {form.batchDate}</div>
-                            <div><strong className="block text-gray-500">Batch #:</strong> {form.batchNumber}</div>
-                            <div><strong className="block text-gray-500">Submitted By:</strong> {form.batchBy}</div>
-                            <div><strong className="block text-gray-500">Lot #:</strong> {form.calculatedValues?.lotNumber}</div>
-                            <div><strong className="block text-gray-500">Shelf Life:</strong> {form.calculatedValues?.shelfLife}</div>
-                            <div className="col-span-2"><strong className="block text-gray-500">Expiry Date:</strong> {form.calculatedValues?.expiryDate}</div>
-                            <div><strong className="block text-gray-500">Base Amount:</strong> {form.baseIngredientAmount} kg</div>
-                            <div><strong className="block text-gray-500">Theoretical Yield:</strong> {form.calculatedValues?.theoreticalYield}</div>
-                             <div><strong className="block text-gray-500">Mixing Tank:</strong> {form.mixingTank?.join(', ')}</div>
-                            <div><strong className="block text-gray-500">Transferred To:</strong> {form.transferTo?.join(', ')}</div>
-                        </div>
-                    </div>
-                    
-                    {/* Ingredients */}
-                    <div className="mb-4">
-                        <h2 className="text-xl font-bold mb-2">Ingredients Used</h2>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-100">
-                                    <tr>
-                                        <th className="p-2">Code</th>
-                                        <th className="p-2">Ingredient</th>
-                                        <th className="p-2">Target</th>
-                                        <th className="p-2">Actual Use</th>
-                                        <th className="p-2">Lot #</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {form.ingredients?.map((ing, index) => (
-                                        <tr key={index} className="border-b">
-                                            <td className="p-2">{ing.code}</td>
-                                            <td className="p-2 font-semibold">{ing.name}</td>
-                                            <td className="p-2">{ing.targetAmount} {ing.isRatio ? 'kg' : ''}</td>
-                                            <td className="p-2">{ing.actualUse}</td>
-                                            <td className="p-2">{ing.lot}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* Final Yield and Verification */}
-                     <div className="grid grid-cols-2 gap-4 text-sm pt-4 border-t">
-                        <div><strong className="block text-gray-500">FINAL BATCH YIELD:</strong> {form.batchYield}</div>
-                        <div><strong className="block text-gray-500">Performed By:</strong> {form.yieldPerformedBy}</div>
-                     </div>
-                </div>
-
-                <div className="p-4 mt-4 bg-white rounded-lg shadow-md">
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <button onClick={handleDownloadPDF} className="w-full bg-gray-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-gray-700 flex items-center justify-center">
-                            <DownloadIcon />
-                            Download as PDF
-                        </button>
-                        <button 
-                            onClick={() => setShowAuditTrail(!showAuditTrail)} 
-                            className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-blue-700 flex items-center justify-center"
+        <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)' }}>
+            <AppBar 
+                position="sticky" 
+                elevation={0}
+                sx={{ 
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(20px)',
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                }}
+            >
+                <Toolbar sx={{ justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <IconButton 
+                            onClick={onBack}
+                            sx={{ 
+                                color: 'text.secondary',
+                                '&:hover': {
+                                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                                }
+                            }}
                         >
-                            📋 {showAuditTrail ? 'Hide' : 'Show'} Audit Trail
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <button onClick={handleReject} className="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-red-600">
-                            Reject
-                        </button>
-                        <button onClick={handleApprove} className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-green-600">
-                            Approve
-                        </button>
-                        <button onClick={handleDelete} className="w-full bg-red-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg hover:bg-red-800 flex items-center justify-center">
-                            <DeleteIcon />
-                            Delete
-                        </button>
-                    </div>
-                </div>
+                            <ArrowBackIcon />
+                        </IconButton>
+                        <Avatar 
+                            sx={{ 
+                                bgcolor: 'warning.main',
+                                width: 40,
+                                height: 40,
+                                fontSize: '1.2rem',
+                                fontWeight: 600,
+                            }}
+                        >
+                            <AssignmentIcon />
+                        </Avatar>
+                        <Box>
+                            <Typography variant="h6" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                Form Verification
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                {form.formTitle || "F-06: Dynamic Yogurt Batch Sheet"}
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            variant="outlined"
+                            startIcon={<VisibilityIcon />}
+                            onClick={() => setShowAuditTrail(true)}
+                            sx={{
+                                borderRadius: 3,
+                                px: 3,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Audit Trail
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            startIcon={<DownloadIcon />}
+                            onClick={handleDownloadPDF}
+                            sx={{
+                                borderRadius: 3,
+                                px: 3,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Download PDF
+                        </Button>
+                    </Box>
+                </Toolbar>
+            </AppBar>
 
-                {/* Audit Trail Section */}
-                {showAuditTrail && (
-                    <div className="mt-4">
-                        <AuditTrailViewer 
-                            formId={form.id}
-                            title={`Audit Trail - ${form.formTitle || form.recipeName}`}
-                        />
-                    </div>
-                )}
-            </main>
-        </div>
+            <Container maxWidth="lg" sx={{ py: 3 }}>
+                <Grid container spacing={3}>
+                    {/* Form Status */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Form Status
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Current status and submission details
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={4}>
+                                            <Box>
+                                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                    Status
+                                                </Typography>
+                                                <Chip 
+                                                    label={form.status} 
+                                                    color={form.status === 'Approved' ? 'success' : form.status === 'Rejected' ? 'error' : 'warning'} 
+                                                    size="small"
+                                                    sx={{ mt: 1 }}
+                                                />
+                                            </Box>
+                                        </Grid>
+                                        <Grid item xs={12} sm={4}>
+                                            <Box>
+                                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                    Submitted by
+                                                </Typography>
+                                                <Typography variant="body1" sx={{ mt: 1 }}>
+                                                    {form.submittedBy || form.batchBy || 'N/A'}
+                                                </Typography>
+                                            </Box>
+                                        </Grid>
+                                        <Grid item xs={12} sm={4}>
+                                            <Box>
+                                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                    Submitted at
+                                                </Typography>
+                                                <Typography variant="body1" sx={{ mt: 1 }}>
+                                                    {formatDate(form.submittedAt)}
+                                                </Typography>
+                                            </Box>
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Form Information */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'info.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <InfoIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Form Information
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Batch details and specifications
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        {form.recipeName && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Recipe
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.recipeName}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchNumber && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch Number
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchNumber}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchDate && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch Date
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchDate}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchBy && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch By
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchBy}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Action Buttons */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'warning.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <WarningIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Verification Actions
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Approve, reject, or delete this form
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={2}>
+                                        <Grid item xs={12} sm={4}>
+                                            <Button
+                                                fullWidth
+                                                variant="contained"
+                                                color="success"
+                                                onClick={handleApprove}
+                                                sx={{
+                                                    borderRadius: 3,
+                                                    py: 1.5,
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                Approve Form
+                                            </Button>
+                                        </Grid>
+                                        <Grid item xs={12} sm={4}>
+                                            <Button
+                                                fullWidth
+                                                variant="contained"
+                                                color="error"
+                                                onClick={() => setRejectionDialog(true)}
+                                                sx={{
+                                                    borderRadius: 3,
+                                                    py: 1.5,
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                Reject Form
+                                            </Button>
+                                        </Grid>
+                                        <Grid item xs={12} sm={4}>
+                                            <Button
+                                                fullWidth
+                                                variant="outlined"
+                                                color="error"
+                                                onClick={handleDelete}
+                                                sx={{
+                                                    borderRadius: 3,
+                                                    py: 1.5,
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                Delete Form
+                                            </Button>
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+                </Grid>
+            </Container>
+
+            {/* Rejection Dialog */}
+            <Dialog open={rejectionDialog} onClose={() => setRejectionDialog(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ fontWeight: 700 }}>
+                    Reject Form
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Please provide a reason for rejecting this form. This will be sent back to the employee for corrective action.
+                    </Typography>
+                    <TextField
+                        fullWidth
+                        multiline
+                        rows={4}
+                        label="Rejection Reason"
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        placeholder="Enter the reason for rejection..."
+                    />
+                </DialogContent>
+                <DialogActions sx={{ p: 3 }}>
+                    <Button 
+                        onClick={() => setRejectionDialog(false)}
+                        sx={{ borderRadius: 3, px: 3, fontWeight: 600 }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={handleReject}
+                        variant="contained"
+                        color="error"
+                        sx={{ borderRadius: 3, px: 3, fontWeight: 600 }}
+                    >
+                        Reject Form
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Audit Trail Dialog */}
+            <Dialog 
+                open={showAuditTrail} 
+                onClose={() => setShowAuditTrail(false)} 
+                maxWidth="md" 
+                fullWidth
+            >
+                <DialogTitle sx={{ fontWeight: 700 }}>
+                    Audit Trail
+                </DialogTitle>
+                <DialogContent>
+                    <AuditTrailViewer formId={form.id} />
+                </DialogContent>
+                <DialogActions sx={{ p: 3 }}>
+                    <Button 
+                        onClick={() => setShowAuditTrail(false)}
+                        sx={{ borderRadius: 3, px: 3, fontWeight: 600 }}
+                    >
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Snackbar 
+                open={snackbar.open} 
+                autoHideDuration={6000} 
+                onClose={handleCloseSnackbar}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={handleCloseSnackbar} 
+                    severity={snackbar.severity} 
+                    sx={{ 
+                        width: '100%',
+                        borderRadius: 3,
+                        fontWeight: 600,
+                    }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
+        </Box>
     );
 }
 

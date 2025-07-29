@@ -1,382 +1,447 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { db, doc, deleteDoc } from './firebase';
-
-// --- ICONS ---
-const BackIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>;
-const DeleteIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
+import {
+  Box,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Container,
+  Divider,
+  Alert,
+  Snackbar,
+  Avatar,
+  Chip,
+} from '@mui/material';
+import {
+  ArrowBack as ArrowBackIcon,
+  Delete as DeleteIcon,
+  Assignment as AssignmentIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
+} from '@mui/icons-material';
 
 function FormViewer({ form, onBack, onDelete }) {
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
     const handleDelete = async () => {
         if (window.confirm('Are you sure you want to delete this archived form? This action cannot be undone.')) {
             try {
                 await deleteDoc(doc(db, "completedForms", form.id));
-                alert('Form deleted successfully!');
-                onDelete && onDelete();
-                onBack();
+                setSnackbar({ open: true, message: 'Form deleted successfully!', severity: 'success' });
+                setTimeout(() => {
+                    onDelete && onDelete();
+                    onBack();
+                }, 1500);
             } catch (error) {
                 console.error("Error deleting form: ", error);
-                alert("Error deleting form. Please try again.");
+                setSnackbar({ open: true, message: 'Error deleting form. Please try again.', severity: 'error' });
             }
         }
     };
 
+    const handleCloseSnackbar = () => {
+        setSnackbar({ ...snackbar, open: false });
+    };
+
+    const formatDate = (date) => {
+        if (!date) return 'N/A';
+        if (date.toDate) {
+            return date.toDate().toLocaleString();
+        }
+        return date;
+    };
+
     return (
-        <div>
-            <header className="bg-gradient-to-r from-purple-600 to-pink-500 p-4 pt-6 shadow-lg sticky top-0 z-20">
-                <div className="flex justify-between items-center">
-                    <button onClick={onBack} className="text-white p-2 -ml-2"><BackIcon /></button>
-                    <h1 className="text-xl font-bold text-white truncate">Archived Form</h1>
-                    <button 
+        <Box sx={{ minHeight: '100vh', background: 'linear-gradient(135deg, #F2F2F7 0%, #FFFFFF 100%)' }}>
+            <AppBar 
+                position="sticky" 
+                elevation={0}
+                sx={{ 
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(20px)',
+                    borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
+                }}
+            >
+                <Toolbar sx={{ justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <IconButton 
+                            onClick={onBack}
+                            sx={{ 
+                                color: 'text.secondary',
+                                '&:hover': {
+                                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                                }
+                            }}
+                        >
+                            <ArrowBackIcon />
+                        </IconButton>
+                        <Avatar 
+                            sx={{ 
+                                bgcolor: 'success.main',
+                                width: 40,
+                                height: 40,
+                                fontSize: '1.2rem',
+                                fontWeight: 600,
+                            }}
+                        >
+                            <AssignmentIcon />
+                        </Avatar>
+                        <Box>
+                            <Typography variant="h6" component="h1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                Archived Form
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                                {form.formTitle || "F-06: Dynamic Yogurt Batch Sheet"}
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <IconButton 
                         onClick={handleDelete}
-                        className="text-white p-2 hover:bg-red-500 rounded-lg transition-colors"
-                        title="Delete Form"
+                        sx={{ 
+                            color: 'error.main',
+                            '&:hover': {
+                                bgcolor: 'error.main',
+                                color: 'white',
+                            }
+                        }}
                     >
                         <DeleteIcon />
-                    </button>
-                </div>
-            </header>
-            
-            <main className="p-4">
-                <div className="max-w-5xl mx-auto bg-white p-4 sm:p-8 rounded-lg shadow-lg border">
-                    <div className="space-y-6">
-                        {/* Form Header Info */}
-                        <div className="bg-gray-100 p-4 rounded-lg border">
-                            <h2 className="text-lg font-medium text-gray-700 mb-2">{form.formTitle || "F-06: Dynamic Yogurt Batch Sheet"}</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                <div><strong>Status:</strong> <span className="text-green-600">{form.status}</span></div>
-                                <div><strong>Submitted by:</strong> {form.submittedBy || form.batchBy}</div>
-                                <div><strong>Submitted at:</strong> {form.submittedAt?.toDate?.()?.toLocaleString() || 'N/A'}</div>
-                            </div>
-                        </div>
+                    </IconButton>
+                </Toolbar>
+            </AppBar>
 
-                        {/* Form Information */}
-                        <div className="bg-blue-50 p-4 rounded-lg border">
-                            <h3 className="text-lg font-semibold mb-3">Form Information</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {form.recipeName && <div><strong>Recipe:</strong> {form.recipeName}</div>}
-                                {form.batchDate && <div><strong>Batch Date:</strong> {form.batchDate}</div>}
-                                {form.batchBy && <div><strong>Batch By:</strong> {form.batchBy}</div>}
-                                {form.batchNumber && <div><strong>Batch Number:</strong> {form.batchNumber}</div>}
-                                {form.date && <div><strong>Date:</strong> {form.date}</div>}
-                                {form.lotNumbers && <div><strong>Lot Numbers:</strong> {form.lotNumbers.join(', ')}</div>}
-                                {form.performedByCut && <div><strong>Performed by (Cut):</strong> {form.performedByCut}</div>}
-                                {form.performedByPh && <div><strong>Performed by (pH):</strong> {form.performedByPh}</div>}
-                                {form.performedByMixing && <div><strong>Performed by (Mixing):</strong> {form.performedByMixing}</div>}
-                                {form.performedByPasteurization && <div><strong>Performed by (Pasteurization):</strong> {form.performedByPasteurization}</div>}
-                                {form.batchBy && <div><strong>Batch By:</strong> {form.batchBy}</div>}
-                                {form.batchSize && <div><strong>Batch Size:</strong> {form.batchSize}</div>}
-                                {form.batchRecipe && <div><strong>Batch Recipe:</strong> {form.batchRecipe}</div>}
-                            </div>
-                        </div>
-
-                        {/* Calculated Values */}
-                        {form.calculatedValues && (
-                            <div className="bg-green-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Calculated Values</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><strong>Shelf Life:</strong> {form.calculatedValues.shelfLife}</div>
-                                    <div><strong>Expiry Date:</strong> {form.calculatedValues.expiryDate}</div>
-                                    <div><strong>Lot Number:</strong> {form.calculatedValues.lotNumber}</div>
-                                    <div><strong>Theoretical Yield:</strong> {form.calculatedValues.theoreticalYield}</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Mixing Tank */}
-                        {form.mixingTank && form.mixingTank.length > 0 && (
-                            <div className="bg-yellow-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Mixing Tank</h3>
-                                <div className="flex flex-wrap gap-2">
-                                    {form.mixingTank.map(tank => (
-                                        <span key={tank} className="bg-yellow-200 px-3 py-1 rounded-full text-sm font-medium">
-                                            Tank {tank}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Base Ingredient */}
-                        {form.baseIngredientAmount && (
-                            <div className="bg-purple-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Base Ingredient</h3>
-                                <div><strong>Amount:</strong> {form.baseIngredientAmount} kg</div>
-                            </div>
-                        )}
-
-                        {/* Ingredients Table */}
-                        {form.ingredients && form.ingredients.length > 0 && (
-                            <div className="bg-white p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Ingredients</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm border-collapse">
-                                        <thead className="bg-gray-200">
-                                            <tr>
-                                                <th className="p-2 border text-left">Code</th>
-                                                <th className="p-2 border text-left">Ingredient</th>
-                                                <th className="p-2 border text-left">Target Amount</th>
-                                                <th className="p-2 border text-left">Actual Use</th>
-                                                <th className="p-2 border text-left">Lot #</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {form.ingredients.map((ing, index) => (
-                                                <tr key={index} className="border-b">
-                                                    <td className="p-2">{ing.code}</td>
-                                                    <td className="p-2">{ing.name}</td>
-                                                    <td className="p-2">{ing.targetAmount} {ing.isRatio ? 'kg' : ''}</td>
-                                                    <td className="p-2">{ing.actualUse}</td>
-                                                    <td className="p-2">{ing.lot}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Transfer and Yield */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {form.transferTo && form.transferTo.length > 0 && (
-                                <div className="bg-orange-50 p-4 rounded-lg border">
-                                    <h3 className="text-lg font-semibold mb-3">Batch Transferred To</h3>
-                                    <div className="flex flex-wrap gap-2">
-                                        {form.transferTo.map((tank, index) => (
-                                            <span key={`${tank}-${index}`} className="bg-orange-200 px-3 py-1 rounded-full text-sm font-medium">
-                                                {tank}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            
-                            {(form.batchYield || form.yieldPerformedBy) && (
-                                <div className="bg-teal-50 p-4 rounded-lg border">
-                                    <h3 className="text-lg font-semibold mb-3">Batch Yield</h3>
-                                    <div className="space-y-2">
-                                        {form.batchYield && <div><strong>Yield:</strong> {form.batchYield}</div>}
-                                        {form.yieldPerformedBy && <div><strong>Performed by:</strong> {form.yieldPerformedBy}</div>}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Yogurt Final Cut Data */}
-                        {form.finalCutData && (
-                            <div className="bg-purple-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Yogurt Final Cut</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm border-collapse">
-                                        <thead className="bg-gray-200">
-                                            <tr>
-                                                <th className="p-2 border text-left">Tank</th>
-                                                <th className="p-2 border text-left">Time Cut</th>
-                                                <th className="p-2 border text-left">pH Cut</th>
-                                                <th className="p-2 border text-left">Process Comments</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {form.finalCutData.map((tank, index) => (
-                                                <tr key={index} className="border-b">
-                                                    <td className="p-2 border font-medium">{index + 1}</td>
-                                                    <td className="p-2 border">{tank.timeCut}</td>
-                                                    <td className="p-2 border">{tank.phCut}</td>
-                                                    <td className="p-2 border">{tank.processComments}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* pH Monitoring Data */}
-                        {form.phMonitoringData && (
-                            <div className="bg-orange-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Yogurt pH Monitoring</h3>
-                                <div className="space-y-4">
-                                    {/* Group readings by tank */}
-                                    {Array.from({ length: 5 }, (_, tankIndex) => {
-                                        const tankReadings = form.phMonitoringData.filter(reading => reading.tankIndex === tankIndex);
-                                        if (tankReadings.length === 0) return null;
-                                        
-                                        return (
-                                            <div key={tankIndex} className="bg-white p-3 rounded border">
-                                                <h4 className="font-bold text-center mb-2">Tank {tankIndex + 1}</h4>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                                                    {tankReadings.map((reading, readingIndex) => (
-                                                        <div key={`${tankIndex}-${reading.readingIndex}`} className="bg-gray-50 p-2 rounded text-xs">
-                                                            <div className="font-medium mb-1">Reading {reading.readingIndex + 1}</div>
-                                                            <div><strong>Time:</strong> {reading.time}</div>
-                                                            <div><strong>pH:</strong> {reading.ph}</div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Mixing Tanks Data */}
-                        {form.mixingTanksData && (
-                            <div className="bg-purple-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Milk Mixing Tanks</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm border-collapse">
-                                        <thead className="bg-gray-200">
-                                            <tr>
-                                                <th className="p-2 border text-left">Tank</th>
-                                                <th className="p-2 border text-left">Quantity (Liters)</th>
-                                                <th className="p-2 border text-left">Time</th>
-                                                <th className="p-2 border text-left">Temp (°C)</th>
-                                                <th className="p-2 border text-left">Product Name</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {form.mixingTanksData.map((tank, index) => (
-                                                <tr key={index} className="border-b">
-                                                    <td className="p-2 border font-medium">{tank.tank}</td>
-                                                    <td className="p-2 border">{tank.quantity}</td>
-                                                    <td className="p-2 border">{tank.time}</td>
-                                                    <td className="p-2 border">{tank.temp}</td>
-                                                    <td className="p-2 border">{tank.productName}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Fermentation Tanks Data */}
-                        {form.fermentationTanksData && (
-                            <div className="bg-orange-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Pasteurization to Fermentation Tanks</h3>
-                                <div className="space-y-4">
-                                    {form.fermentationTanksData.map((tank, index) => (
-                                        <div key={index} className="bg-white p-3 rounded border">
-                                            <h4 className="font-bold text-center mb-2">Fermentation Tank {index + 1}</h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                                                <div><strong>Product In:</strong> {tank.productInTime}</div>
-                                                <div><strong>Culture In:</strong> {tank.cultureInTime}</div>
-                                                <div><strong>Stop:</strong> {tank.stopTime}</div>
-                                                <div><strong>Agitation:</strong> {tank.agitationTime}</div>
-                                                <div><strong>Yogurt Type:</strong> {tank.yogurtType}</div>
-                                                <div><strong>Source Tank:</strong> {tank.sourceMixingTank}</div>
-                                                {tank.cutTime && (
-                                                    <div className="col-span-full bg-yellow-100 p-2 rounded border">
-                                                        <strong>Cut Time (Stop + 4h):</strong> {tank.cutTime}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Corrective Actions */}
-                        {form.correctiveActions && (
-                            <div className="bg-red-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Corrective Actions</h3>
-                                <div className="bg-white p-3 rounded border">
-                                    <p className="text-sm whitespace-pre-wrap">{form.correctiveActions}</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Main Batching Process Data */}
-                        {form.mainBatchingData && (
-                            <div className="bg-green-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Yogurt Batching Process</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm border-collapse">
-                                        <thead className="bg-gray-200">
-                                            <tr>
-                                                <th className="p-2 border text-left">Steps</th>
-                                                <th className="p-2 border text-left">QC Parameters</th>
-                                                <th className="p-2 border text-left">Start Time</th>
-                                                <th className="p-2 border text-left">End Time</th>
-                                                <th className="p-2 border text-left">Comments</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {form.mainBatchingData.map((step, index) => (
-                                                <tr key={index} className="border-b">
-                                                    <td className="p-2 border font-medium">{step.step}</td>
-                                                    <td className="p-2 border">{step.qc}</td>
-                                                    <td className="p-2 border">{step.startTime}</td>
-                                                    <td className="p-2 border">{step.endTime}</td>
-                                                    <td className="p-2 border">{step.comments}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Mixing / Sheer Data */}
-                        {form.mixingSheerData && (
-                            <div className="bg-purple-50 p-4 rounded-lg border">
-                                <h3 className="text-lg font-semibold mb-3">Mixing / Sheer</h3>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm border-collapse">
-                                        <thead className="bg-gray-200">
-                                            <tr>
-                                                <th className="p-2 border text-left">Steps</th>
-                                                <th className="p-2 border text-left">QC Parameters</th>
-                                                <th className="p-2 border text-left">Start Time</th>
-                                                <th className="p-2 border text-left">End Time</th>
-                                                <th className="p-2 border text-left">Comments</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {form.mixingSheerData.map((step, index) => (
-                                                <tr key={index} className="border-b">
-                                                    <td className="p-2 border font-medium">{step.step}</td>
-                                                    <td className="p-2 border">{step.qc}</td>
-                                                    <td className="p-2 border">{step.startTime}</td>
-                                                    <td className="p-2 border">{step.endTime}</td>
-                                                    <td className="p-2 border">{step.comments}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Delete Warning */}
-                        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                            <div className="flex items-start">
-                                <div className="flex-shrink-0">
-                                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                    </svg>
-                                </div>
-                                <div className="ml-3">
-                                    <h3 className="text-sm font-medium text-red-800">Delete Form</h3>
-                                    <div className="mt-2 text-sm text-red-700">
-                                        <p>This action will permanently delete this archived form. This cannot be undone.</p>
-                                    </div>
-                                    <div className="mt-4">
-                                        <button
-                                            onClick={handleDelete}
-                                            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            <Container maxWidth="lg" sx={{ py: 3 }}>
+                <Grid container spacing={3}>
+                    {/* Form Header Info */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'primary.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
                                         >
-                                            Delete Form
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
-        </div>
+                                            <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Form Status
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {form.formTitle || "F-06: Dynamic Yogurt Batch Sheet"}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} sm={4}>
+                                            <Box>
+                                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                    Status
+                                                </Typography>
+                                                <Chip 
+                                                    label={form.status} 
+                                                    color="success" 
+                                                    size="small"
+                                                    sx={{ mt: 1 }}
+                                                />
+                                            </Box>
+                                        </Grid>
+                                        <Grid item xs={12} sm={4}>
+                                            <Box>
+                                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                    Submitted by
+                                                </Typography>
+                                                <Typography variant="body1" sx={{ mt: 1 }}>
+                                                    {form.submittedBy || form.batchBy || 'N/A'}
+                                                </Typography>
+                                            </Box>
+                                        </Grid>
+                                        <Grid item xs={12} sm={4}>
+                                            <Box>
+                                                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                    Submitted at
+                                                </Typography>
+                                                <Typography variant="body1" sx={{ mt: 1 }}>
+                                                    {formatDate(form.submittedAt)}
+                                                </Typography>
+                                            </Box>
+                                        </Grid>
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Form Information */}
+                    <Grid item xs={12}>
+                        <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                            <CardContent sx={{ p: 0 }}>
+                                <Box sx={{ p: 3, pb: 2 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                        <Box
+                                            sx={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: '50%',
+                                                bgcolor: 'info.main',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            }}
+                                        >
+                                            <InfoIcon sx={{ color: 'white', fontSize: 20 }} />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                Form Information
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Batch details and specifications
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Divider />
+                                <Box sx={{ p: 3 }}>
+                                    <Grid container spacing={3}>
+                                        {form.recipeName && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Recipe
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.recipeName}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchDate && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch Date
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchDate}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchBy && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch By
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchBy}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchNumber && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch Number
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchNumber}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.date && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Date
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.date}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchSize && (
+                                            <Grid item xs={12} sm={6}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch Size
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchSize}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.batchRecipe && (
+                                            <Grid item xs={12}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                        Batch Recipe
+                                                    </Typography>
+                                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                                        {form.batchRecipe}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                        {form.lotNumbers && form.lotNumbers.length > 0 && (
+                                            <Grid item xs={12}>
+                                                <Box>
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, mb: 1 }}>
+                                                        Lot Numbers
+                                                    </Typography>
+                                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                                        {form.lotNumbers.map((lot, index) => (
+                                                            <Chip 
+                                                                key={index}
+                                                                label={lot} 
+                                                                variant="outlined" 
+                                                                size="small"
+                                                            />
+                                                        ))}
+                                                    </Box>
+                                                </Box>
+                                            </Grid>
+                                        )}
+                                    </Grid>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    {/* Calculated Values */}
+                    {form.calculatedValues && (
+                        <Grid item xs={12}>
+                            <Card sx={{ borderRadius: 4, overflow: 'hidden' }}>
+                                <CardContent sx={{ p: 0 }}>
+                                    <Box sx={{ p: 3, pb: 2 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                            <Box
+                                                sx={{
+                                                    width: 40,
+                                                    height: 40,
+                                                    borderRadius: '50%',
+                                                    bgcolor: 'success.main',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}
+                                            >
+                                                <CheckCircleIcon sx={{ color: 'white', fontSize: 20 }} />
+                                            </Box>
+                                            <Box>
+                                                <Typography variant="h6" component="h2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                    Calculated Values
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Automatically calculated parameters
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ p: 3 }}>
+                                        <Grid container spacing={3}>
+                                            {form.calculatedValues.shelfLife && (
+                                                <Grid item xs={12} sm={6}>
+                                                    <Box>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                            Shelf Life
+                                                        </Typography>
+                                                        <Typography variant="body1" sx={{ mt: 1 }}>
+                                                            {form.calculatedValues.shelfLife}
+                                                        </Typography>
+                                                    </Box>
+                                                </Grid>
+                                            )}
+                                            {form.calculatedValues.expiryDate && (
+                                                <Grid item xs={12} sm={6}>
+                                                    <Box>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                            Expiry Date
+                                                        </Typography>
+                                                        <Typography variant="body1" sx={{ mt: 1 }}>
+                                                            {form.calculatedValues.expiryDate}
+                                                        </Typography>
+                                                    </Box>
+                                                </Grid>
+                                            )}
+                                            {form.calculatedValues.lotNumber && (
+                                                <Grid item xs={12} sm={6}>
+                                                    <Box>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                            Lot Number
+                                                        </Typography>
+                                                        <Typography variant="body1" sx={{ mt: 1 }}>
+                                                            {form.calculatedValues.lotNumber}
+                                                        </Typography>
+                                                    </Box>
+                                                </Grid>
+                                            )}
+                                            {form.calculatedValues.theoreticalYield && (
+                                                <Grid item xs={12} sm={6}>
+                                                    <Box>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                            Theoretical Yield
+                                                        </Typography>
+                                                        <Typography variant="body1" sx={{ mt: 1 }}>
+                                                            {form.calculatedValues.theoreticalYield}
+                                                        </Typography>
+                                                    </Box>
+                                                </Grid>
+                                            )}
+                                        </Grid>
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                    )}
+
+                    {/* Additional form data sections would go here */}
+                    {/* This is a simplified version - you can add more sections as needed */}
+                </Grid>
+            </Container>
+
+            <Snackbar 
+                open={snackbar.open} 
+                autoHideDuration={6000} 
+                onClose={handleCloseSnackbar}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert 
+                    onClose={handleCloseSnackbar} 
+                    severity={snackbar.severity} 
+                    sx={{ 
+                        width: '100%',
+                        borderRadius: 3,
+                        fontWeight: 600,
+                    }}
+                >
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
+        </Box>
     );
 }
 

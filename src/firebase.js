@@ -16,7 +16,13 @@ import {
     getDoc,
     getDocs
 } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import {
+    getStorage,
+    ref,
+    uploadBytes,
+    getDownloadURL,
+    deleteObject
+} from "firebase/storage";
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -38,11 +44,6 @@ const storage = getStorage(app);
 export {
     db,
     auth,
-    storage,
-    ref,
-    uploadBytes,
-    getDownloadURL,
-    deleteObject,
     collection,
     query,
     where,
@@ -58,5 +59,11 @@ export {
     getDocs,
     onAuthStateChanged,
     signOut,
-    signInWithEmailAndPassword
+    signInWithEmailAndPassword,
+    // Storage exports
+    storage,
+    ref,
+    uploadBytes,
+    getDownloadURL,
+    deleteObject
 };
